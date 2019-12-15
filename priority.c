@@ -31,8 +31,10 @@ queue *newQueue(uint32_t size) {
 // mistake of freeing memory out of order, or forgetting to free.
 
 void delQueue(queue *q) {
-  free(q->Q);
-  free(q);
+  if (q) {
+    free(q->Q);
+    free(q);
+  }
   return;
 }
 

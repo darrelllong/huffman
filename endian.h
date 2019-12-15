@@ -4,22 +4,16 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-static inline bool isBig() {
-  union {
-    uint8_t bytes[2];
-    uint16_t word;
-  } test;
-  test.word = 0xFF00;
-  return test.bytes[0];
+static inline bool isBig(void) {
+  uint16_t word = 0x0001;
+  uint8_t *byte = (uint8_t *)&word;
+  return byte[1];
 }
 
-static inline bool isLittle() {
-  union {
-    uint8_t bytes[2];
-    uint16_t word;
-  } test;
-  test.word = 0xFF00;
-  return test.bytes[1];
+static inline bool isLittle(void) {
+  uint16_t word = 0x0001;
+  uint8_t *byte = (uint8_t *)&word;
+  return byte[0];
 }
 
 static inline uint16_t swap16(uint16_t x) {

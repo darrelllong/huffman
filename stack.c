@@ -1,8 +1,9 @@
-#include "stack.h"
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+
+#include "stack.h"
 
 #define MIN_STACK 16
 
