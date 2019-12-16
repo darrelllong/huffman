@@ -59,7 +59,7 @@ static inline bool emptyCode(code *c) { return c->l == 0; }
 static inline bool fullCode(code *c) { return c->l == CODE; }
 
 // State for writing the code to a file efficiently. codeB is a buffer of bits
-// to be written. codeP is a pointer to the end of the bugger, and codeC is a
+// to be written. codeP is a pointer to the end of the buffer, and codeC is a
 // count of the total number of code bits.
 
 static uint8_t codeB[KB];
