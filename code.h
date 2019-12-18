@@ -22,7 +22,7 @@ typedef struct code {
 // We are just initializing, the actual code will be allocated on the stack
 // and copied upon assignment which is exactly the behavior that we want.
 
-static inline code newCode() {
+static inline code newCode(void) {
   code t;
   for (int i = 0; i < CODE / 8; i += 1) {
     t.bits[i] = 0;
@@ -62,7 +62,7 @@ static inline bool fullCode(code *c) { return c->l == CODE; }
 // to be written. codeP is a pointer to the end of the buffer, and codeC is a
 // count of the total number of code bits.
 
-static uint8_t codeB[KB];
+static uint8_t  codeB[KB];
 static uint32_t codeP = 0;
 static uint64_t codeC = 0;
 
@@ -82,13 +82,13 @@ static inline void appendCode(int file, code c) {
   for (uint32_t i = 0; i < c.l; i += 1) {
     if (c.bits[i / 8] & (0x1 << (i % 8))) // Bit set?
     {
-      codeB[codeP / 8] |= (0x1 << (codeP % 8));
+      codeB[codeP / 8] |=  (0x1 << (codeP % 8)); // Append 1
     } else {
-      codeB[codeP / 8] &= ~(0x1 << (codeP % 8));
+      codeB[codeP / 8] &= ~(0x1 << (codeP % 8)); // Append 0
     }
 
     codeP += 1;
-    if (codeP == KB * 8) {
+    if (codeP == KB * 8) { // Flush if the buffer is full
       write(file, codeB, KB);
       codeP = 0;
     }
