@@ -5,12 +5,12 @@
 
 #include "stack.h"
 
-#define MIN_STACK 16
+#define MIN_STACK 256
 
 // Encapsulate and localize dyanmic allocations. This way you can check them,
 // and fix them once when you make a mistake.
 
-stack *newStack() {
+stack *newStack(void) {
   stack *s = (stack *)calloc(MIN_STACK, sizeof(stack));
   if (s) {
     s->size = MIN_STACK;

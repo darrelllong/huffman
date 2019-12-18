@@ -16,7 +16,7 @@ typedef struct stack {
   item *entries;
 } stack;
 
-extern stack *newStack();
+extern stack *newStack(void);
 
 extern item pop(stack *);
 
