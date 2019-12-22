@@ -325,9 +325,6 @@ int main(int argc, char **argv) {
     printTree(t, 0);
   }
 
-  free(inputFile);
-  free(outputFile);
-
   close(fileIn);
   close(fileOut);
 
