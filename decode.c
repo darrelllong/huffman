@@ -42,7 +42,7 @@ static treeNode *loadTree(uint8_t savedTree[], uint16_t treeBytes) {
       treeNode *t = newNode(savedTree[count], true, 1);
       push(s, t);
     } else {
-      treeNode *a = NIL, *b = NIL;
+      treeNode *a = NULL, *b = NULL;
 
       if (emptyS(s)) // Right node
       {
@@ -127,7 +127,7 @@ static void decodeFile(treeNode *root, int fileIn, int fileOut, uint64_t len) {
 
 int main(int argc, char **argv) {
   int fileIn = 0, fileOut = 1;
-  char *inputFile = NIL, *outputFile = NIL;
+  char *inputFile = NULL, *outputFile = NULL;
 
   static struct option options[] = {{"input", required_argument, NULL, 'i'},
                                     {"output", required_argument, NULL, 'o'},

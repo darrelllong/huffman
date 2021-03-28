@@ -1,13 +1,8 @@
-#ifndef _HUFFMAN_H_DL
-#define _HUFFMAN_H_DL
+#pragma once
 
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
-
-#ifndef NIL
-#define NIL (void *)0
-#endif
 
 #define MAGIC 0xDeadD00d
 
@@ -30,7 +25,7 @@ static inline void delNode(treeNode *h) {
 }
 
 static inline void delTree(treeNode *h) {
-  if (h != NIL) {
+  if (h != NULL) {
     delTree(h->left);
     delTree(h->right);
     delNode(h);
@@ -43,5 +38,3 @@ static inline int compare(treeNode *l, treeNode *r) {
 }
 
 extern void printTree(treeNode *t, int depth);
-
-#endif

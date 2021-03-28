@@ -14,11 +14,11 @@ treeNode *newNode(uint8_t s, bool l, uint64_t c) {
     n->symbol = s;
     n->count = c;
     n->leaf = l;
-    n->left = NIL;
-    n->right = NIL;
+    n->left = NULL;
+    n->right = NULL;
     return n;
   } else {
-    return NIL;
+    return NULL;
   }
 }
 
@@ -29,7 +29,7 @@ treeNode *join(treeNode *l, treeNode *r) {
     n->right = r;
     return n;
   } else {
-    return NIL;
+    return NULL;
   }
 }
 
