@@ -9,7 +9,7 @@ static inline uint32_t succ(uint32_t x, uint32_t n) { return (x + n + 1) % n; }
 
 static inline uint32_t pred(uint32_t x, uint32_t n) { return (x + n - 1) % n; }
 
-// Encapsulate and localize dyanmic allocations. This way you can check them,
+// Encapsulate and localize dynamic allocations. This way you can check them,
 // and fix them once when you make a mistake.
 
 queue *newQueue(uint32_t size) {
