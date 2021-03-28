@@ -25,7 +25,7 @@ static inline void delNode(treeNode *h) {
 }
 
 static inline void delTree(treeNode *h) {
-  if (h != NULL) {
+  if (h) {
     delTree(h->left);
     delTree(h->right);
     delNode(h);
