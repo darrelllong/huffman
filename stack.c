@@ -31,7 +31,7 @@ item pop(stack *s) {
     s->top -= 1;
     return s->entries[s->top];
   } else {
-    return NIL;
+    return NULL;
   }
 }
 
