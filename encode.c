@@ -114,7 +114,7 @@ static treeNode *buildTree(int inFile, int outFile) {
   }
   write(outFile, &treeBytes, sizeof(treeBytes));
 
-  treeNode *t = NIL;
+  treeNode *t = NULL;
 
   while (!empty(q)) {
     treeNode *l, *r;
@@ -187,8 +187,8 @@ static void encodeFile(int fileIn, int fileOut, code c[]) {
 int main(int argc, char **argv) {
   int fileIn = 0;
   int fileOut = 1;
-  char *inputFile = NIL;
-  char *outputFile = NIL;
+  char *inputFile = NULL;
+  char *outputFile = NULL;
 
   static struct option options[] = {{"input", required_argument, NULL, 'i'},
                                     {"output", required_argument, NULL, 'o'},
