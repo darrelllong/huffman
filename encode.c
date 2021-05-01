@@ -131,17 +131,44 @@ static treeNode *buildTree(int inFile, int outFile) {
   return t;
 }
 
+#define BLK 1024
+
+bool buffered_write(int file, uint8_t b[], uint32_t l, bool flush) {
+    static char buffer[BLK];
+    static int blkP = 0;
+    for (uint32_t i = 0; i < l; i += 1) {
+        buffer[blkP] = b[i];
+        blkP += 1;
+        if (blkP == BLK) { // Buffer is full
+            if (write(file, buffer, BLK) < BLK) { // Clear the buffer
+                return false; // write failed
+            }
+            blkP = 0;
+        }
+    }
+    if (flush && blkP > 0) { // Flush the buffer
+        if (write(file, buffer, blkP) < blkP) {
+            return false; // write failed
+        }
+        blkP = 0;
+    }
+    return true;
+}
+
 void dumpTree(int fileOut, treeNode *t) {
   static char L = 'L', I = 'I';
 
   if (t) {
     if (t->leaf) {
-      write(fileOut, &L, 1);         // Leaf indicator
-      write(fileOut, &t->symbol, 1); // Symbol
+      (void) buffered_write(fileOut, (uint8_t *)
+              &L, 1, false);         // Leaf indicator
+      (void) buffered_write(fileOut, (uint8_t *)
+              &t->symbol, 1, false); // Symbol
     } else {
-      dumpTree(fileOut, t->left);
-      dumpTree(fileOut, t->right);
-      write(fileOut, &I, 1); // Interior node indicator
+      (void) dumpTree(fileOut, t->left);
+      (void) dumpTree(fileOut, t->right);
+      (void) buffered_write(fileOut, (uint8_t *)
+              &I, 1, false); // Interior node indicator
     }
   }
   return;
@@ -303,7 +330,7 @@ int main(int argc, char **argv) {
 
   // Output the tree
 
-  dumpTree(fileOut, t);
+  dumpTree(fileOut, t); buffered_write(fileOut, (uint8_t *) 0, 0, true);
 
   // Output the encoded file
 
