@@ -2,6 +2,7 @@
 #include "endian.h"
 #include "huffman.h"
 #include "queue.h"
+#include "sizes.h"
 
 #include <fcntl.h>
 #include <getopt.h>
@@ -24,14 +25,6 @@ static int fullTree = false;
 static uint32_t magicNumber = MAGIC;
 static uint16_t leaves = 0;
 static uint16_t treeBytes;
-
-#ifndef KB
-#define KB 1024
-#endif
-
-#ifndef BYTE
-#define BYTE 256
-#endif
 
 // A temporary file, since mkstemp() is not ANSI.
 
@@ -129,8 +122,6 @@ static treeNode *buildTree(int inFile, int outFile) {
     }
     return t;
 }
-
-#define BLK 1024
 
 bool buffered_write(int file, uint8_t b[], uint32_t l, bool flush) {
     static char buffer[BLK];

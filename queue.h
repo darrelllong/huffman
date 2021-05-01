@@ -1,5 +1,4 @@
-#ifndef _QUEUE_H_DL
-#define _QUEUE_H_DL
+#pragma once
 
 #include "huffman.h"
 
@@ -26,5 +25,3 @@ extern bool full(queue *q);
 
 extern bool enqueue(queue *q, item i);
 extern bool dequeue(queue *q, item *i);
-
-#endif

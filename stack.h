@@ -1,5 +1,4 @@
-#ifndef _STACK_H_DL
-#define _STACK_H_DL
+#pragma once
 
 #include "huffman.h"
 
@@ -32,5 +31,3 @@ static inline void delStack(stack *s) {
 static inline bool emptyS(stack *s) {
     return s->top == 0;
 }
-
-#endif

@@ -1,18 +1,10 @@
-#ifndef _CODE_H_DL
-#define _CODE_H_DL
+#pragma once
+
+#include "sizes.h"
 
 #include <stdbool.h>
 #include <stdint.h>
-
-#ifndef KB
-#define KB 1024
-#endif
-
-// In rare instances, a code can be up to 256 bits long.
-
-#ifndef CODE
-#define CODE 256
-#endif
+#include <unistd.h>
 
 typedef struct code {
     uint8_t bits[CODE / 8];
@@ -99,5 +91,3 @@ static inline void appendCode(int file, code c) {
     }
     return;
 }
-
-#endif

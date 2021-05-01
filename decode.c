@@ -2,6 +2,7 @@
 #include "endian.h"
 #include "huffman.h"
 #include "queue.h"
+#include "sizes.h"
 #include "stack.h"
 
 #include <fcntl.h>
@@ -20,13 +21,6 @@
         fprintf(stderr, "%s\n", X);                                                                \
         exit(1);                                                                                   \
     }
-
-#ifndef KB
-#define KB 1024
-#endif
-#ifndef MB
-#define MB (KB * KB)
-#endif
 
 static int verbose = false;
 static int print = false;
@@ -233,8 +227,7 @@ int main(int argc, char **argv) {
     // Build a new tree
 
     treeNode *t = loadTree(savedTree, treeBytes);
-
-    if (!t) {
+    if (t == NULL) {
         ERROR("Loading tree failed");
     }
 
