@@ -2,6 +2,7 @@
 #define _QUEUE_H_DL
 
 #include "huffman.h"
+
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -11,9 +12,9 @@ typedef treeNode *item;
 #endif
 
 typedef struct queue {
-  uint32_t size;
-  uint32_t head, tail;
-  item *Q;
+    uint32_t size;
+    uint32_t head, tail;
+    item *Q;
 } queue;
 
 extern queue *newQueue(uint32_t size);

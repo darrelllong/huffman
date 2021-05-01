@@ -8,6 +8,9 @@ encode	: encode.o huffman.o priority.o
 
 decode	: decode.o huffman.o stack.o
 
+format   :
+	clang-format -i -style=file *.[ch]
+
 infer   :
 	make clean; infer-capture -- make; infer-analyze -- make
 
