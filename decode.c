@@ -1,5 +1,6 @@
 #include "code.h"
 #include "endian.h"
+#include "header.h"
 #include "huffman.h"
 #include "queue.h"
 #include "sizes.h"
@@ -12,6 +13,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <sys/types.h>
 #include <unistd.h>
 
 #define strdup(s) strcpy(malloc(strlen(s) + 1), s)
@@ -85,7 +87,7 @@ static int8_t nextBit(int file) {
 static void decodeFile(treeNode *root, int fileIn, int fileOut, uint64_t len) {
     treeNode *r = root;
 
-    uint8_t buffer[MB];
+    uint8_t buffer[BLK];
     uint32_t bP = 0;
 
     if (r) {
@@ -96,7 +98,7 @@ static void decodeFile(treeNode *root, int fileIn, int fileOut, uint64_t len) {
         while (len > 0 && (b = nextBit(fileIn)) >= 0) {
             if (r->leaf) {
                 len -= 1;
-                if (bP == MB) {
+                if (bP == BLK) {
                     write(fileOut, buffer, bP);
                     bP = 0;
                 }
@@ -175,39 +177,22 @@ int main(int argc, char **argv) {
         fileOut = STDOUT_FILENO;
     }
 
-    // Is it a compressed file?
+    // Read and validate header.
+    Header h;
+    if (read(fileIn, &h, sizeof(Header)) < (ssize_t) sizeof(Header)) {
+        ERROR("Read of header failed");
+    }
 
-    uint32_t magic;
-    if (read(fileIn, &magic, sizeof(magic)) < (long) sizeof(magic)) {
+    uint32_t magic = isBig() ? swap32(h.magic) : h.magic;
+    uint16_t treeBytes = isBig() ? swap16(h.tree_size) : h.tree_size;
+    uint16_t permissions = isBig() ? swap16(h.permissions) : h.permissions;
+    uint64_t origSize = isBig() ? swap64(h.file_size) : h.file_size;
+
+    if (magic != MAGIC) {
         ERROR("Read of magic number failed");
     }
-
-    if (magic != MAGIC && swap32(magic) != MAGIC) {
-        ERROR("Not a compressed file");
-    }
-
-    // Original file size
-
-    uint64_t origSize = 0;
-    if (read(fileIn, &origSize, sizeof(uint64_t)) < (long) sizeof(uint64_t)) {
-        ERROR("Read of original file size failed");
-    }
-
-    if (isBig() || MAGIC == swap32(magic)) // Canonical is "Little Endian"
-    {
-        origSize = swap64(origSize);
-    }
-
-    // Load the saved tree
-
-    uint16_t treeBytes = 0;
-    if (read(fileIn, &treeBytes, sizeof(treeBytes)) < (long) sizeof(treeBytes)) {
-        ERROR("Read of tree size failed");
-    }
-
-    if (isBig() || MAGIC == swap32(magic)) // Canonical is "Little Endian"
-    {
-        treeBytes = swap16(treeBytes);
+    if (fchmod(fileOut, permissions) == -1) {
+        ERROR("Change of output file permissions failed");
     }
 
     uint8_t savedTree[treeBytes];

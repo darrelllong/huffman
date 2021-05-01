@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-#define MAGIC 0xDeadD00d
+#define MAGIC 0xdeaddead
 
 typedef struct DAH treeNode;
 

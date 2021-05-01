@@ -1,5 +1,6 @@
 #include "code.h"
 #include "endian.h"
+#include "header.h"
 #include "huffman.h"
 #include "queue.h"
 #include "sizes.h"
@@ -59,7 +60,29 @@ static uint8_t freqCnt(int file, uint64_t hist[]) {
     return unique;
 }
 
-static treeNode *buildTree(int inFile, int outFile) {
+bool buffered_write(int file, uint8_t b[], uint32_t l, bool flush) {
+    static char buffer[BLK];
+    static int blkP = 0;
+    for (uint32_t i = 0; i < l; i += 1) {
+        buffer[blkP] = b[i];
+        blkP += 1;
+        if (blkP == BLK) { // Buffer is full
+            if (write(file, buffer, BLK) < BLK) { // Clear the buffer
+                return false; // write failed
+            }
+            blkP = 0;
+        }
+    }
+    if (flush && blkP > 0) { // Flush the buffer
+        if (write(file, buffer, blkP) < blkP) {
+            return false; // write failed
+        }
+        blkP = 0;
+    }
+    return true;
+}
+
+static treeNode *buildTree(int inFile, int outFile, Header *h) {
     uint64_t hist[BYTE] = { 0 };
 
     uint8_t unique = freqCnt(inFile, hist);
@@ -99,12 +122,8 @@ static treeNode *buildTree(int inFile, int outFile) {
     //   4. Zero is the minimum
 
     treeBytes = leaves > 0 ? 3 * leaves - 1 : 0;
-
-    if (isBig()) // Canonical is "Little Endian"
-    {
-        treeBytes = swap16(treeBytes);
-    }
-    write(outFile, &treeBytes, sizeof(treeBytes));
+    h->tree_size = isBig() ? swap16(treeBytes) : treeBytes;
+    buffered_write(outFile, (uint8_t *) h, sizeof(Header), true);
 
     treeNode *t = NULL;
 
@@ -121,28 +140,6 @@ static treeNode *buildTree(int inFile, int outFile) {
         } // Singleton is the root
     }
     return t;
-}
-
-bool buffered_write(int file, uint8_t b[], uint32_t l, bool flush) {
-    static char buffer[BLK];
-    static int blkP = 0;
-    for (uint32_t i = 0; i < l; i += 1) {
-        buffer[blkP] = b[i];
-        blkP += 1;
-        if (blkP == BLK) { // Buffer is full
-            if (write(file, buffer, BLK) < BLK) { // Clear the buffer
-                return false; // write failed
-            }
-            blkP = 0;
-        }
-    }
-    if (flush && blkP > 0) { // Flush the buffer
-        if (write(file, buffer, blkP) < blkP) {
-            return false; // write failed
-        }
-        blkP = 0;
-    }
-    return true;
 }
 
 void dumpTree(int fileOut, treeNode *t) {
@@ -269,6 +266,7 @@ int main(int argc, char **argv) {
 
     struct stat fileStat;
     fstat(fileIn, &fileStat);
+    fchmod(fileOut, fileStat.st_mode);
     uint64_t origSize = fileStat.st_size;
 
     if (outputFile) {
@@ -286,39 +284,26 @@ int main(int argc, char **argv) {
         fileOut = STDOUT_FILENO;
     }
 
-    // Write magic number
+    // Build header, canonical is "Little Endian".
+    Header h = {
+        .magic = isBig() ? swap32(magicNumber) : magicNumber,
+        .permissions = isBig() ? swap16(fileStat.st_mode) : fileStat.st_mode,
+        .file_size = isBig() ? swap64(origSize) : origSize,
+    };
 
-    if (isBig()) // Canonical is "Little Endian"
-    {
-        magicNumber = swap32(magicNumber);
-    }
-    write(fileOut, &magicNumber, sizeof(magicNumber));
-
-    // Write original file size
-
-    if (isBig()) // Canonical is "Little Endian"
-    {
-        origSize = swap64(origSize);
-    }
-    write(fileOut, &origSize, sizeof(origSize));
-
-    // Build a Huffman tree, save its size to the output file
-
-    treeNode *t = buildTree(fileIn, fileOut);
+    // Build a Huffman tree, finish header and write it out.
+    treeNode *t = buildTree(fileIn, fileOut, &h);
 
     // Walk the tree to find the codes for each symbol
-
     code s = newCode();
     code builtCode[BYTE];
     buildCode(s, t, builtCode);
 
     // Output the tree
-
     dumpTree(fileOut, t);
     buffered_write(fileOut, (uint8_t *) 0, 0, true);
 
     // Output the encoded file
-
     encodeFile(fileIn, fileOut, builtCode);
 
     if (verbose) {
