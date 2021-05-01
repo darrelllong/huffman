@@ -1,5 +1,4 @@
-#ifndef __HEADER_H__
-#define __HEADER_H__
+#pragma once
 
 #include <stdint.h>
 
@@ -9,5 +8,3 @@ typedef struct Header {
     uint16_t tree_size;
     uint64_t file_size;
 } Header;
-
-#endif
