@@ -5,11 +5,6 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#ifndef _ITEM_DL
-#define _ITEM_DL
-typedef treeNode *item;
-#endif
-
 typedef struct queue {
     uint32_t size;
     uint32_t head, tail;

@@ -3,7 +3,6 @@
 #include <ctype.h>
 #include <inttypes.h>
 #include <stdbool.h>
-#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -42,9 +41,7 @@ static inline void spaces(int c) {
 
 void printTree(treeNode *t, int depth) {
     if (t) {
-        printTree(t->left, depth + 1);
-
-        spaces(4 * depth);
+        printTree(t->left, depth + 1); spaces(4 * depth);
         if (t->leaf) {
             if (isgraph(t->symbol)) {
                 fprintf(stderr, "'%c' (%" PRIu64 ")\n", t->symbol, t->count);
@@ -54,7 +51,6 @@ void printTree(treeNode *t, int depth) {
         } else {
             fprintf(stderr, "$ (%" PRIu64 ")\n", t->count);
         }
-
         printTree(t->right, depth + 1);
     }
     return;

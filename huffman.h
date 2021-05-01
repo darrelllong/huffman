@@ -8,6 +8,8 @@
 
 typedef struct DAH treeNode;
 
+typedef treeNode *item;
+
 struct DAH {
     uint8_t symbol;
     uint64_t count;

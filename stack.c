@@ -23,7 +23,7 @@ stack *newStack(void) {
     return (void *) 0;
 }
 
-// pop will return a NIL pointer if the stack is empty.
+// pop will return a NULL pointer if the stack is empty.
 
 item pop(stack *s) {
     if (s->top > 0) {
