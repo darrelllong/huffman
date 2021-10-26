@@ -41,7 +41,7 @@ static inline bool popCode(code *c, uint32_t *k) {
         return false;
     } else {
         c->l -= 1;
-        *k = ((0x1 << (c->l % 8)) & c->bits[c->l / 8]) >> (c->l % 8);
+        *k = (c->bits[c->l / 8] >> c->l % 8) & 0x1;
         return true;
     }
 }
