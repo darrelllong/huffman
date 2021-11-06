@@ -95,23 +95,21 @@ static void decodeFile(treeNode *root, int fileIn, int fileOut, uint64_t len) {
 
         // Do not decode extra bits (len)
 
-        while (len > 0) {
-            b = nextBit(fileIn);
+        while (len > 0 && (b = nextBit(fileIn)) >= 0) {
+            // Walk left on 0, right on 1.
+            // This is safe because the root can never decode to a symbol.
+            r = (b == 0) ? r->left : r->right;
+
+            // Emit symbol when leaf is reached, reset to root.
             if (r->leaf) {
                 len -= 1;
+                buffer[bP++] = r->symbol;
                 if (bP == BLK) {
                     write(fileOut, buffer, bP);
                     bP = 0;
                 }
-                buffer[bP++] = r->symbol;
                 r = root;
             }
-            if (b == 0) {
-                r = r->left;
-            } // Go left
-            else {
-                r = r->right;
-            } // Go right
         }
     }
     if (bP != 0) // Remainder
