@@ -190,7 +190,7 @@ int main(int argc, char **argv) {
     if (magic != MAGIC) {
         ERROR("Read of magic number failed");
     }
-    if (fchmod(fileOut, permissions) == -1) {
+    if (fileOut != STDOUT_FILENO && fchmod(fileOut, permissions) == -1) {
         ERROR("Change of output file permissions failed");
     }
 
