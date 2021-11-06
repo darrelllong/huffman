@@ -79,7 +79,7 @@ static int8_t nextBit(int file) {
             return -1;
         } // We're done
     }
-    bit = (bytes[bitNo / 8] & (0x1 << bitNo % 8)) >> (bitNo % 8);
+    bit = (bytes[bitNo / 8] >> (bitNo % 8)) & 0x1;
     bitNo += 1;
     return bit;
 }
@@ -95,7 +95,8 @@ static void decodeFile(treeNode *root, int fileIn, int fileOut, uint64_t len) {
 
         // Do not decode extra bits (len)
 
-        while (len > 0 && (b = nextBit(fileIn)) >= 0) {
+        while (len > 0) {
+            b = nextBit(fileIn);
             if (r->leaf) {
                 len -= 1;
                 if (bP == BLK) {

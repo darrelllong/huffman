@@ -65,7 +65,9 @@ static uint64_t codeC = 0;
 // flushCode will write any code bytes that have not already been written.
 
 static inline void flushCode(int file) {
-    write(file, codeB, codeP / 8 + 1);
+    if (codeP) {
+        write(file, codeB, codeP % 8 ? codeP / 8 + 1 : codeP / 8);
+    }
     return;
 }
 
