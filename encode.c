@@ -93,7 +93,7 @@ static treeNode *buildTree(int inFile, int outFile, Header *h) {
     // could special-case a zero symbol tree, but that is a waste of code
     // for a single case.
 
-    if (unique < 2) // Zero symbols, two stand-ins
+    if (unique < 2) // Less than two symbols? We need stand-ins.
     {
         hist[0x00] = hist[0x00] ? hist[0x00] : hist[0x00] + 1;
         hist[0xFF] = hist[0xFF] ? hist[0xFF] : hist[0xFF] + 1;
