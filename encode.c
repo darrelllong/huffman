@@ -93,17 +93,10 @@ static treeNode *buildTree(int inFile, int outFile, Header *h) {
     // could special-case a zero symbol tree, but that is a waste of code
     // for a single case.
 
-    if (unique == 0) // Zero symbols, two stand-ins
+    if (unique < 2) // Zero symbols, two stand-ins
     {
-        hist[0x00] += 1;
-        hist[0xFF] += 1;
-    } else if (unique == 1) // One symbol, one stand-in
-    {
-        if (hist[0x00] == 0) {
-            hist[0x00] += 1; // 0x00 is the stand-in
-        } else {
-            hist[0xFF] += 1; // 0xFF is the stand-in
-        }
+        hist[0x00] = hist[0x00] ? hist[0x00] : hist[0x00] + 1;
+        hist[0xFF] = hist[0xFF] ? hist[0xFF] : hist[0xFF] + 1;
     }
 
     // We provide the option to building a full tree or a minimal tree.
