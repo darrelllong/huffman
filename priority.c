@@ -3,12 +3,16 @@
 
 #include <stdlib.h>
 
-static inline uint32_t succ(uint32_t x, uint32_t n) { return (x + n + 1) % n; }
+static inline uint32_t succ(uint32_t x, uint32_t n) {
+    return (x + n + 1) % n;
+}
 
 // Number theory says modulo should be positive, but in C we have -1 % n = -1,
 // and we want n - 1.
 
-static inline uint32_t pred(uint32_t x, uint32_t n) { return (x + n - 1) % n; }
+static inline uint32_t pred(uint32_t x, uint32_t n) {
+    return (x + n - 1) % n;
+}
 
 // Encapsulate and localize dynamic allocations. This way you can check them,
 // and fix them once when you make a mistake.

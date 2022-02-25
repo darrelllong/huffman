@@ -41,7 +41,8 @@ static inline void spaces(int c) {
 
 void printTree(treeNode *t, int depth) {
     if (t) {
-        printTree(t->left, depth + 1); spaces(4 * depth);
+        printTree(t->left, depth + 1);
+        spaces(4 * depth);
         if (t->leaf) {
             if (isgraph(t->symbol)) {
                 fprintf(stderr, "'%c' (%" PRIu64 ")\n", t->symbol, t->count);

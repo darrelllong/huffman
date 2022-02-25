@@ -1,5 +1,5 @@
 CC=cc
-CFLAGS=-Wall -Wextra -Wpedantic -Werror -Wshadow -Wparentheses -Oz -std=c11
+CFLAGS=-Wall -Wextra -Wpedantic -Werror -Wshadow -Wparentheses -Oz -std=c17
 
 .PHONY	:
 all	: encode decode
