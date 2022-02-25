@@ -17,12 +17,7 @@
 #include <unistd.h>
 
 #define strdup(s) strcpy(malloc(strlen(s) + 1), s)
-
-#define ERROR(X)                                                                                   \
-    {                                                                                              \
-        fprintf(stderr, "%s\n", X);                                                                \
-        exit(1);                                                                                   \
-    }
+#define ERROR(X) { fprintf(stderr, "%s\n", X); exit(EXIT_FAILURE); }
 
 static int verbose = false;
 static int print = false;
@@ -231,5 +226,5 @@ int main(int argc, char **argv) {
     close(fileIn);
     close(fileOut);
     delTree(t);
-    exit(0);
+    exit(EXIT_SUCCESS);
 }

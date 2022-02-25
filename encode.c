@@ -318,5 +318,5 @@ int main(int argc, char **argv) {
     close(fileOut);
 
     delTree(t);
-    exit(0);
+    exit(EXIT_SUCCESS);
 }

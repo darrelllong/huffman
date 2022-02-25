@@ -37,5 +37,5 @@ double entropy(int file) {
 
 int main(void) {
     printf("%lf\n", entropy(STDIN_FILENO));
-    return 0;
+    return EXIT_SUCCESS;
 }
