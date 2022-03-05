@@ -35,13 +35,13 @@ int Mymktemp() {
     snprintf(tmpFile, KB, "/tmp/encode.%u.%ld", getpid(), time(0));
 
     int fileOut = open(tmpFile, O_CREAT | O_EXCL | O_RDWR | O_TRUNC, 0644);
-    unlink(tmpFile);
+    unlink(tmpFile); // Leave no trace, file exists only while it remains open
     return fileOut;
 }
 
 // Count the number of occurences of each symbol in the file.
 
-static uint8_t freqCnt(int file, uint64_t hist[]) {
+static uint8_t histogram(int file, uint64_t hist[]) {
     uint8_t b[KB] = { 0 };
     uint8_t unique = 0;
 
@@ -50,13 +50,12 @@ static uint8_t freqCnt(int file, uint64_t hist[]) {
     long count;
     while ((count = read(file, b, KB)) > 0) {
         for (int i = 0; i < count; i += 1) {
-            if (hist[b[i]] == 0) {
+            if (hist[b[i]] == 0) { // Count the number of symbols that occur
                 unique += 1;
             }
             hist[b[i]] += 1;
         }
     }
-
     return unique;
 }
 
@@ -85,7 +84,7 @@ bool buffered_write(int file, uint8_t b[], uint32_t l, bool flush) {
 static treeNode *buildTree(int inFile, int outFile, Header *h) {
     uint64_t hist[BYTE] = { 0 };
 
-    uint8_t unique = freqCnt(inFile, hist);
+    uint8_t unique = histogram(inFile, hist);
 
     queue *q = newQueue(BYTE + 1);
 
@@ -179,9 +178,9 @@ static void encodeFile(int fileIn, int fileOut, code c[]) {
 
     lseek(fileIn, 0, SEEK_SET); // Start of the file
 
-    while ((count = read(fileIn, b, KB)) > 0) {
-        for (int i = 0; i < count; i += 1) {
-            appendCode(fileOut, c[b[i]]);
+    while ((count = read(fileIn, b, KB)) > 0) { // Read a block
+        for (int i = 0; i < count; i += 1) { // Scan through the block
+            appendCode(fileOut, c[b[i]]); // Append the code for each byte
         }
     }
     flushCode(fileOut);
@@ -194,10 +193,10 @@ int main(int argc, char **argv) {
     char *inputFile = NULL;
     char *outputFile = NULL;
 
-    static struct option options[]
-        = { { "input", required_argument, NULL, 'i' }, { "output", required_argument, NULL, 'o' },
-              { "verbose", no_argument, &verbose, 'v' }, { "print", no_argument, &print, 'p' },
-              { "full", no_argument, &fullTree, 'f' }, { NULL, 0, NULL, 0 } };
+    static struct option options[] = {
+          { "input", required_argument, NULL, 'i' }, { "output", required_argument, NULL, 'o' },
+          { "verbose", no_argument, &verbose, 'v' }, { "print", no_argument, &print, 'p' },
+          { "full", no_argument, &fullTree, 'f' }, { NULL, 0, NULL, 0 } };
 
     int c;
     while ((c = getopt_long(argc, argv, "-fpvi:o:", options, NULL)) != -1) {
@@ -263,7 +262,6 @@ int main(int argc, char **argv) {
     uint64_t origSize = fileStat.st_size;
 
     if (outputFile) {
-
         if ((fileOut = open(outputFile, O_CREAT | O_EXCL | O_RDWR | O_TRUNC, 0644)) < 0) {
             char s[1024] = { 0 };
             strcat(s, argv[0]);
@@ -296,16 +294,15 @@ int main(int argc, char **argv) {
     dumpTree(fileOut, t);
     buffered_write(fileOut, (uint8_t *) 0, 0, true);
 
-    // Output the encoded file
-    encodeFile(fileIn, fileOut, builtCode);
+    encodeFile(fileIn, fileOut, builtCode); // Output the encoded file
 
     if (verbose) {
         fprintf(stderr, "Original %" PRIu64 " bits: ", 8 * origSize);
-        fprintf(stderr, "leaves %u ", leaves);
-        fprintf(stderr, "(%u bytes) ", treeBytes);
+        fprintf(stderr, "leaves %" PRIu16, leaves);
+        fprintf(stderr, " (%" PRIu16 " bytes) ", treeBytes);
         fprintf(stderr, "encoding %" PRIu64 " bit%s", codeC, codeC == 1 ? "" : "s");
         if (origSize > 0) {
-            fprintf(stderr, " (%2.4lf%%)", 100 * (double) codeC / (8 * fileStat.st_size));
+            fprintf(stderr, " (%2.4lf%%)", 100 * (double) codeC / (8 * origSize));
         }
         fprintf(stderr, ".\n");
     }
@@ -314,9 +311,11 @@ int main(int argc, char **argv) {
         printTree(t, 0);
     }
 
+    // Clean up: files, tree
+
     close(fileIn);
     close(fileOut);
-
     delTree(t);
+
     exit(EXIT_SUCCESS);
 }
