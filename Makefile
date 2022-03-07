@@ -4,9 +4,9 @@ CFLAGS=-Wall -Wextra -Wpedantic -Werror -Wshadow -Wparentheses -Oz -std=c17
 .PHONY	:
 all	: encode decode
 
-encode	: encode.o huffman.o priority.o
+encode	: usage.o encode.o huffman.o priority.o
 
-decode	: decode.o huffman.o stack.o
+decode	: usage.o decode.o huffman.o stack.o
 
 format   :
 	clang-format -i -style=file *.[ch]

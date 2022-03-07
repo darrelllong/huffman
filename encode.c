@@ -1,4 +1,5 @@
 #include "code.h"
+#include "usage.h"
 #include "endian.h"
 #include "header.h"
 #include "huffman.h"
@@ -192,6 +193,7 @@ int main(int argc, char **argv) {
     int fileOut = 1;
     char *inputFile = NULL;
     char *outputFile = NULL;
+    bool usage = false;
 
     static struct option options[] = {
           { "input", required_argument, NULL, 'i' }, { "output", required_argument, NULL, 'o' },
@@ -199,28 +201,26 @@ int main(int argc, char **argv) {
           { "full", no_argument, &fullTree, 'f' }, { NULL, 0, NULL, 0 } };
 
     int c;
-    while ((c = getopt_long(argc, argv, "-fpvi:o:", options, NULL)) != -1) {
+    while ((c = getopt_long(argc, argv, "-fupvi:o:", options, NULL)) != -1) {
         switch (c) {
-        case 'i': {
+        case 'i':
             inputFile = strdup(optarg);
             break;
-        }
-        case 'o': {
+        case 'o':
             outputFile = strdup(optarg);
             break;
-        }
-        case 'v': {
+        case 'v':
             verbose = true;
             break;
-        }
-        case 'p': {
+        case 'p':
             print = true;
             break;
-        }
-        case 'f': {
+        case 'f':
             fullTree = true;
             break;
-        }
+        case 'u':
+              usage = true;
+              break;
         }
     }
 
@@ -311,6 +311,9 @@ int main(int argc, char **argv) {
         printTree(t, 0);
     }
 
+    if (usage) {
+        printUsage();
+    }
     // Clean up: files, tree
 
     close(fileIn);
