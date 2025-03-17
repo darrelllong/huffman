@@ -18,7 +18,19 @@
 #include <time.h>
 #include <unistd.h>
 
-#define strdup(s) strcpy(malloc(strlen(s) + 1), s)
+#ifndef HAVE_STRDUP
+#define strdup(s) strdup_fallback(s)
+
+static inline char *strdup_fallback(const char *s) {
+    size_t len = strlen(s) + 1;
+    char *copy = malloc(len);
+    if (!copy) {
+        perror("strdup malloc failed");
+        exit(EXIT_FAILURE);
+    }
+    return memcpy(copy, s, len); // memcpy avoids redundant NULL checks
+}
+#endif
 
 static int verbose = false;
 static int print = false;
@@ -30,7 +42,7 @@ static uint16_t treeBytes;
 
 // A temporary file, since mkstemp() is not ANSI.
 
-int Mymktemp() {
+static int Mymktemp(void) {
     char tmpFile[KB];
 
     snprintf(tmpFile, KB, "/tmp/encode.%u.%ld", getpid(), time(0));
@@ -44,7 +56,7 @@ int Mymktemp() {
 
 static uint8_t histogram(int file, uint64_t hist[]) {
     uint8_t b[KB] = { 0 };
-    uint8_t unique = 0;
+    uint16_t unique = 0; // If for some reason there is a file of each possible 8-bit value.
 
     lseek(file, 0, SEEK_SET); // Start of the file
 

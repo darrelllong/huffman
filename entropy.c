@@ -9,9 +9,9 @@
 #define BYTE  256
 #define KBYTE 1024
 
-uint64_t number = 0, count[BYTE] = { 0 };
+static uint64_t number = 0, count[BYTE] = { 0 };
 
-uint8_t buffer[KBYTE] = { 0 };
+static uint8_t buffer[KBYTE] = { 0 };
 
 void tally(int file) {
     int length;
@@ -26,6 +26,9 @@ void tally(int file) {
 
 double entropy(int file) {
     tally(file);
+    if (number == 0) {  // An empty file has no information
+        return 0;
+    }
     double sum = 0.0;
     for (int i = 0; i < BYTE; i += 1) {
         double p = (double) count[i] / (double) number;

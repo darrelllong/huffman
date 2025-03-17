@@ -26,11 +26,11 @@ stack *newStack(void) {
 // pop will return a NULL pointer if the stack is empty.
 
 item pop(stack *s) {
-    if (s->top > 0) {
+    if (!s || s->top <= 0) {
+        return NULL;
+    } else {
         s->top -= 1;
         return s->entries[s->top];
-    } else {
-        return NULL;
     }
 }
 

@@ -16,8 +16,21 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-#define strdup(s) strcpy(malloc(strlen(s) + 1), s)
 #define ERROR(X) { fprintf(stderr, "%s\n", X); exit(EXIT_FAILURE); }
+
+#ifndef HAVE_STRDUP
+#define strdup(s) strdup_fallback(s)
+
+static inline char *strdup_fallback(const char *s) {
+    size_t len = strlen(s) + 1;
+    char *copy = malloc(len);
+    if (!copy) {
+        perror("strdup malloc failed");
+        exit(EXIT_FAILURE);
+    }
+    return memcpy(copy, s, len); // memcpy avoids redundant NULL checks
+}
+#endif
 
 static int verbose = false;
 static int print = false;
