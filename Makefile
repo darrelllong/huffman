@@ -15,4 +15,4 @@ infer   :
 	make clean; infer-capture -- make; infer-analyze -- make
 
 clean	:
-	rm -fr infer-out encode encode.o decode decode.o huffman.o priority.o stack.o
+	rm -fr infer-out encode encode.o decode decode.o huffman.o priority.o stack.o usage.o
