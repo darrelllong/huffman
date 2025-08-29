@@ -160,9 +160,9 @@ int main(int argc, char **argv) {
     if (inputFile) {
         if ((fileIn = open(inputFile, O_RDONLY)) < 0) {
             char s[KB] = { 0 };
-            strcat(s, argv[0]);
-            strcat(s, ": ");
-            strcat(s, inputFile);
+            strncat(s, argv[0], sizeof(s) - strlen(s) - 1);
+            strncat(s, ": ", sizeof(s) - strlen(s) - 1);
+            strncat(s, inputFile, sizeof(s) - strlen(s) - 1);
             perror(s);
             exit(1);
         }
@@ -172,9 +172,9 @@ int main(int argc, char **argv) {
 
     if (outputFile) {
         char s[KB] = { 0 };
-        strcat(s, argv[0]);
-        strcat(s, ": ");
-        strcat(s, outputFile);
+        strncat(s, argv[0], sizeof(s) - strlen(s) - 1);
+        strncat(s, ": ", sizeof(s) - strlen(s) - 1);
+        strncat(s, outputFile, sizeof(s) - strlen(s) - 1);
 
         if ((fileOut = open(outputFile, O_CREAT | O_EXCL | O_RDWR | O_TRUNC, 0644)) < 0) {
             perror(s);

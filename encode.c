@@ -239,9 +239,9 @@ int main(int argc, char **argv) {
     if (inputFile) {
         if ((fileIn = open(inputFile, O_RDONLY)) < 0) {
             char s[1024] = { 0 };
-            strcat(s, argv[0]);
-            strcat(s, ": ");
-            strcat(s, inputFile);
+            strncat(s, argv[0], sizeof(s) - strlen(s) - 1);
+            strncat(s, ": ", sizeof(s) - strlen(s) - 1);
+            strncat(s, inputFile, sizeof(s) - strlen(s) - 1);
             perror(s);
             exit(1);
         }
@@ -252,9 +252,9 @@ int main(int argc, char **argv) {
         int tmpFile = Mymktemp();
         if (tmpFile < 0) {
             char s[1024] = { 0 };
-            strcat(s, argv[0]);
-            strcat(s, ": ");
-            strcat(s, "stdin (/tmp)");
+            strncat(s, argv[0], sizeof(s) - strlen(s) - 1);
+            strncat(s, ": ", sizeof(s) - strlen(s) - 1);
+            strncat(s, "stdin (/tmp)", sizeof(s) - strlen(s) - 1);
             perror(s);
             exit(1);
         }
