@@ -10,7 +10,7 @@
 // and fix them once when you make a mistake.
 
 stack *newStack(void) {
-    stack *s = (stack *) calloc(MIN_STACK, sizeof(stack));
+    stack *s = (stack *) calloc(1, sizeof(stack));
     if (s) {
         s->size = MIN_STACK;
         s->top = 0;
