@@ -29,6 +29,9 @@ SANITIZER_MARKERS = (
     "runtime error:",
 )
 
+MAGIC_V1 = 0xBEEFD00D
+MAGIC_V2 = 0xBEEFD00E
+
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Fuzz Huffman encode/decode")
@@ -42,6 +45,24 @@ def parse_args() -> argparse.Namespace:
         type=float,
         default=0.5,
         help="Fraction of iterations to spend in round-trip mode [0.0, 1.0]",
+    )
+    p.add_argument(
+        "--full-tree-ratio",
+        type=float,
+        default=0.2,
+        help="Fraction of round-trip iterations that use encode -f [0.0, 1.0]",
+    )
+    p.add_argument(
+        "--pipe-ratio",
+        type=float,
+        default=0.1,
+        help="Fraction of round-trip iterations that use stdin/stdout pipelines [0.0, 1.0]",
+    )
+    p.add_argument(
+        "--structured-ratio",
+        type=float,
+        default=0.1,
+        help="Fraction of mutation iterations using structured header mutations [0.0, 1.0]",
     )
     p.add_argument(
         "--max-plain",
@@ -80,10 +101,13 @@ def parse_args() -> argparse.Namespace:
     return p.parse_args()
 
 
-def run_command(cmd: list[str], timeout: float) -> tuple[int, bytes, bytes, bool]:
+def run_command(
+    cmd: list[str], timeout: float, input_data: Optional[bytes] = None
+) -> tuple[int, bytes, bytes, bool]:
     try:
         proc = subprocess.run(
             cmd,
+            input=input_data,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             timeout=timeout,
@@ -145,6 +169,36 @@ def mutate_blob(data: bytes, rng: random.Random, max_len: int) -> bytes:
     return bytes(b)
 
 
+def mutate_structured_header(data: bytes, rng: random.Random, max_len: int) -> bytes:
+    # WHAT: deterministically perturb header fields with semantic meaning.
+    # HOW: patch magic/tree_size/file_size/CRC bytes to boundary and sentinel values.
+    # This reaches parser branches that uniform random bit flips rarely hit.
+    b = bytearray(data if data else (MAGIC_V2.to_bytes(4, "little") + b"\x00" * 14))
+    if len(b) < 18:
+        b.extend(rng.randbytes(18 - len(b)))
+
+    op = rng.randrange(6)
+    if op == 0:
+        b[0:4] = MAGIC_V1.to_bytes(4, "little")
+    elif op == 1:
+        b[0:4] = (0xDEADBEEF).to_bytes(4, "little")
+    elif op == 2:
+        tree_size = rng.choice([5, 767, 4, 768, 0, 0xFFFF])
+        b[6:8] = int(tree_size).to_bytes(2, "little", signed=False)
+    elif op == 3:
+        file_size = rng.choice([0, (1 << 64) - 1])
+        b[8:16] = int(file_size).to_bytes(8, "little", signed=False)
+    elif op == 4:
+        b[16:18] = b"\x00\x00"
+    else:
+        crc = int.from_bytes(b[16:18], "little", signed=False)
+        b[16:18] = (crc ^ 0xFFFF).to_bytes(2, "little", signed=False)
+
+    if len(b) > max_len:
+        b = b[:max_len]
+    return bytes(b)
+
+
 def has_sanitizer_diagnostic(stderr: bytes) -> bool:
     text = stderr.decode("utf-8", errors="replace")
     return any(marker in text for marker in SANITIZER_MARKERS)
@@ -196,6 +250,46 @@ def save_failure(
     return d
 
 
+def make_v1_stream(v2_stream: bytes) -> Optional[bytes]:
+    if len(v2_stream) < 18:
+        return None
+    out = bytearray(v2_stream)
+    out[0:4] = MAGIC_V1.to_bytes(4, "little")
+    return bytes(out[:16]) + bytes(out[18:])
+
+
+def seed_valid_corpus(
+    corpus: list[bytes], rng: random.Random, encode_bin: str, timeout: float, corpus_limit: int
+) -> None:
+    # WHAT: bootstrap mutation mode with valid compressed samples.
+    # HOW: generate small encoded streams (including V1 form) before the main loop.
+    # This avoids spending early mutation iterations on pure garbage inputs only.
+    seed_payloads = [
+        b"",
+        b"A",
+        bytes(range(256)),
+        b"The quick brown fox jumps over the lazy dog.\n" * 8,
+    ]
+    for payload in seed_payloads:
+        use_full_tree = rng.random() < 0.5
+        cmd = [encode_bin]
+        if use_full_tree:
+            cmd.append("-f")
+        enc_rc, compressed, enc_err, enc_to = run_command(cmd, timeout=timeout, input_data=payload)
+        if enc_to or enc_rc != 0 or has_sanitizer_diagnostic(enc_err) or not compressed:
+            continue
+        if len(corpus) < corpus_limit:
+            corpus.append(compressed)
+        else:
+            corpus[rng.randrange(len(corpus))] = compressed
+        v1 = make_v1_stream(compressed)
+        if v1 is not None:
+            if len(corpus) < corpus_limit:
+                corpus.append(v1)
+            else:
+                corpus[rng.randrange(len(corpus))] = v1
+
+
 def roundtrip_case(
     rng: random.Random,
     work_dir: Path,
@@ -203,8 +297,61 @@ def roundtrip_case(
     decode_bin: str,
     timeout: float,
     max_plain: int,
+    full_tree_ratio: float,
+    pipe_ratio: float,
 ) -> tuple[bool, str, bytes, bytes, bytes, int, int, bytes, bytes, bool]:
+    # WHAT: verify encode/decode correctness end-to-end.
+    # HOW: run either file-path mode or stdin/stdout pipeline mode, then compare payload bytes.
+    # Both modes check return codes and sanitizer diagnostics on encode and decode stderr.
     payload = random_bytes(rng, max_plain)
+    use_full_tree = rng.random() < full_tree_ratio
+    use_pipe = rng.random() < pipe_ratio
+
+    if use_pipe:
+        enc_cmd = [encode_bin]
+        if use_full_tree:
+            enc_cmd.append("-f")
+        enc_rc, compressed, enc_err, enc_to = run_command(enc_cmd, timeout=timeout, input_data=payload)
+        if enc_to:
+            return False, "encode_timeout", payload, b"", b"", enc_rc, -1, enc_err, b"", True
+        if has_sanitizer_diagnostic(enc_err):
+            return False, "encode_sanitizer", payload, compressed, b"", enc_rc, -1, enc_err, b"", False
+        if enc_rc != 0 or not compressed:
+            return False, "encode_fail", payload, compressed, b"", enc_rc, -1, enc_err, b"", False
+
+        dec_rc, decoded, dec_err, dec_to = run_command([decode_bin], timeout=timeout, input_data=compressed)
+        if dec_to:
+            return False, "decode_timeout", payload, compressed, decoded, enc_rc, dec_rc, enc_err, dec_err, True
+        if has_sanitizer_diagnostic(dec_err):
+            return (
+                False,
+                "decode_sanitizer",
+                payload,
+                compressed,
+                decoded,
+                enc_rc,
+                dec_rc,
+                enc_err,
+                dec_err,
+                False,
+            )
+        if dec_rc != 0:
+            return False, "decode_fail", payload, compressed, decoded, enc_rc, dec_rc, enc_err, dec_err, False
+        if decoded != payload:
+            return (
+                False,
+                "roundtrip_mismatch",
+                payload,
+                compressed,
+                decoded,
+                enc_rc,
+                dec_rc,
+                enc_err,
+                dec_err,
+                False,
+            )
+        return True, "", payload, compressed, decoded, enc_rc, dec_rc, enc_err, dec_err, False
+
     in_path = work_dir / "in.bin"
     comp_path = work_dir / "comp.huf"
     out_path = work_dir / "out.bin"
@@ -214,12 +361,16 @@ def roundtrip_case(
     if out_path.exists():
         out_path.unlink()
 
-    enc_rc, _, enc_err, enc_to = run_command(
-        [encode_bin, "-i", str(in_path), "-o", str(comp_path)],
-        timeout=timeout,
-    )
+    enc_cmd = [encode_bin]
+    if use_full_tree:
+        enc_cmd.append("-f")
+    enc_cmd.extend(["-i", str(in_path), "-o", str(comp_path)])
+    enc_rc, _, enc_err, enc_to = run_command(enc_cmd, timeout=timeout)
     if enc_to:
         return False, "encode_timeout", payload, b"", b"", enc_rc, -1, enc_err, b"", True
+    if has_sanitizer_diagnostic(enc_err):
+        comp = safe_read(comp_path)
+        return False, "encode_sanitizer", payload, comp, b"", enc_rc, -1, enc_err, b"", False
     if enc_rc != 0 or not comp_path.exists():
         comp = safe_read(comp_path)
         return False, "encode_fail", payload, comp, b"", enc_rc, -1, enc_err, b"", False
@@ -251,9 +402,16 @@ def decode_mutation_case(
     timeout: float,
     corpus: list[bytes],
     max_mutated: int,
+    structured_ratio: float,
 ) -> tuple[bool, str, bytes, bytes, int, bytes, bool]:
+    # WHAT: stress decoder robustness on malformed or near-valid compressed blobs.
+    # HOW: select a base from corpus, mutate it (random or structured), and run decode.
+    # Non-zero exits are allowed; sanitizer output, signals, and timeouts are not.
     base = rng.choice(corpus) if corpus and rng.random() < 0.9 else rng.randbytes(rng.randint(0, 8192))
-    mutated = mutate_blob(base, rng, max_mutated)
+    if rng.random() < structured_ratio:
+        mutated = mutate_structured_header(base, rng, max_mutated)
+    else:
+        mutated = mutate_blob(base, rng, max_mutated)
     in_path = work_dir / "mut.huf"
     out_path = work_dir / "mut.out"
     in_path.write_bytes(mutated)
@@ -290,6 +448,15 @@ def main() -> int:
     if not (0.0 <= args.roundtrip_ratio <= 1.0):
         print("error: --roundtrip-ratio must be in [0.0, 1.0]", file=sys.stderr)
         return 2
+    if not (0.0 <= args.full_tree_ratio <= 1.0):
+        print("error: --full-tree-ratio must be in [0.0, 1.0]", file=sys.stderr)
+        return 2
+    if not (0.0 <= args.pipe_ratio <= 1.0):
+        print("error: --pipe-ratio must be in [0.0, 1.0]", file=sys.stderr)
+        return 2
+    if not (0.0 <= args.structured_ratio <= 1.0):
+        print("error: --structured-ratio must be in [0.0, 1.0]", file=sys.stderr)
+        return 2
     if args.timeout <= 0.0:
         print("error: --timeout must be > 0", file=sys.stderr)
         return 2
@@ -303,9 +470,12 @@ def main() -> int:
     print(f"[fuzz] encode={Path(encode_bin).resolve()}")
     print(f"[fuzz] decode={Path(decode_bin).resolve()}")
 
-    # Base corpus: empty + tiny values + random compressed samples from round-trips.
+    # WHAT: mixed corpus gives broad coverage quickly.
+    # HOW: start with tiny junk seeds, then inject valid compressed artifacts at startup and
+    # continuously from successful round-trip iterations.
     corpus: list[bytes] = [b"", b"\x00", b"\xff", b"L", b"I", b"L\x00I"]
     failures = 0
+    seed_valid_corpus(corpus, rng, encode_bin, args.timeout, args.corpus_limit)
 
     with tempfile.TemporaryDirectory(prefix="huff_fuzz_") as tmp:
         work = Path(tmp)
@@ -319,6 +489,8 @@ def main() -> int:
                     decode_bin=decode_bin,
                     timeout=args.timeout,
                     max_plain=args.max_plain,
+                    full_tree_ratio=args.full_tree_ratio,
+                    pipe_ratio=args.pipe_ratio,
                 )
                 if ok:
                     if compressed and (len(corpus) < args.corpus_limit or rng.random() < 0.1):
@@ -353,6 +525,7 @@ def main() -> int:
                     timeout=args.timeout,
                     corpus=corpus,
                     max_mutated=args.max_mutated,
+                    structured_ratio=args.structured_ratio,
                 )
                 if not ok:
                     failures += 1
