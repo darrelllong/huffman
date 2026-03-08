@@ -1,15 +1,29 @@
+//! Bit-compatible Huffman encoder/decoder used by the Rust CLI.
+//!
+//! The serialized format is intentionally stable:
+//! 1. 16-byte little-endian header
+//! 2. optional V2 CRC16/CCITT-FALSE over those 16 bytes
+//! 3. post-order serialized Huffman tree
+//! 4. payload bits packed LSB-first in each byte
+//!
+//! This module keeps that contract explicit so C and Rust artifacts interoperate.
+
 use std::collections::VecDeque;
 use std::fmt;
 use std::io;
 use std::io::{Read, Write};
 
+// Versioned wire-format tags.
 pub const MAGIC_V1: u32 = 0xBEEFD00D;
 pub const MAGIC_V2: u32 = 0xBEEFD00E;
 pub const MAGIC: u32 = MAGIC_V2;
+// Conservative fallback when V2 header CRC validation fails.
 pub const FALLBACK_PERMISSIONS: u16 = 0o444;
 const BYTE_VALUES: usize = 256;
+// Maximum code depth for an 8-bit alphabet is <= 255, so 256 bits is sufficient.
 const CODE_BITS: usize = 256;
 const CODE_BYTES: usize = CODE_BITS / 8;
+// Post-order tree encoding always has odd length 3*n_leaves - 1.
 const MIN_TREE_BYTES: usize = 5;
 const MAX_TREE_BYTES: usize = 3 * BYTE_VALUES - 1;
 
@@ -44,6 +58,7 @@ pub struct Header {
     pub file_size: u64,
 }
 
+/// Decoded bytes plus metadata carried in the Huffman header.
 #[derive(Debug)]
 pub struct DecodeResult {
     pub data: Vec<u8>,
@@ -52,6 +67,7 @@ pub struct DecodeResult {
     pub format_magic: u32,
 }
 
+/// Streaming decode metadata for callers that provide output writers.
 #[derive(Clone, Copy, Debug)]
 pub struct DecodeMetadata {
     pub permissions: u16,
@@ -89,6 +105,7 @@ impl Node {
 
     fn join(left: Self, right: Self) -> Self {
         Self {
+            // The symbol field is ignored for internal nodes.
             symbol: b'$',
             count: left.count + right.count,
             leaf: false,
@@ -111,6 +128,7 @@ impl Code {
     };
 
     fn set_bit(&mut self, i: usize, bit: u8) {
+        // Bit order is LSB-first to preserve C bitstream compatibility.
         if bit != 0 {
             self.bits[i / 8] |= 1u8 << (i % 8);
         }
@@ -144,6 +162,7 @@ fn build_tree(input: &[u8], full_tree: bool) -> Result<(Node, u16), HuffmanError
     }
 
     // Require at least two symbols, exactly like the C implementation.
+    // This prevents degenerate one-node trees in normal mode.
     if unique < 2 {
         if hist[0] == 0 {
             hist[0] += 1;
@@ -156,12 +175,14 @@ fn build_tree(input: &[u8], full_tree: bool) -> Result<(Node, u16), HuffmanError
     let mut queue: VecDeque<Node> = VecDeque::with_capacity(BYTE_VALUES + 1);
     let mut leaves: u16 = 0;
     for (i, &count) in hist.iter().enumerate() {
+        // full_tree forces all 256 leaves, used for deterministic shape tests.
         if full_tree || count > 0 {
             enqueue_sorted(&mut queue, Node::new_leaf(i as u8, count));
             leaves += 1;
         }
     }
 
+    // Serialized size is fixed by leaf count in this post-order encoding.
     let tree_size = if leaves > 0 { 3 * leaves - 1 } else { 0 };
     let mut root: Option<Node> = None;
     while let Some(left) = queue.pop_front() {
@@ -210,6 +231,7 @@ fn build_codes(root: &Node) -> [Code; BYTE_VALUES] {
         if node.leaf {
             let mut code = Code::EMPTY;
             code.len = depth as u16;
+            // Copy the traversal path into packed code bits.
             for (i, bit) in path[..depth].iter().copied().enumerate() {
                 code.set_bit(i, bit);
             }
@@ -262,6 +284,7 @@ fn encode_payload(input: &[u8], codes: &[Code; BYTE_VALUES]) -> Vec<u8> {
 }
 
 fn write_header_bytes(header: Header) -> [u8; 16] {
+    // Header layout must stay byte-for-byte stable across implementations.
     let mut out = [0u8; 16];
     out[0..4].copy_from_slice(&header.magic.to_le_bytes());
     out[4..6].copy_from_slice(&header.permissions.to_le_bytes());
@@ -282,6 +305,7 @@ fn read_header_bytes(src: &[u8]) -> Result<Header, HuffmanError> {
     })
 }
 
+/// CRC-16/CCITT-FALSE over the provided bytes.
 pub fn crc16_ccitt(data: &[u8]) -> u16 {
     // CRC-16/CCITT-FALSE (same as C):
     // polynomial 0x1021, init 0xFFFF, no reflection, no xorout.
@@ -326,6 +350,7 @@ pub fn encode_bytes(
 
     let mut tree_bytes = Vec::with_capacity(tree_size as usize);
     dump_tree(&tree, &mut tree_bytes);
+    // Defensive check: serialization must match the computed structural size.
     if tree_bytes.len() != tree_size as usize {
         return Err(HuffmanError::InvalidFormat("tree size mismatch"));
     }
@@ -364,6 +389,7 @@ fn load_tree_compact(saved_tree: &[u8]) -> Result<(Vec<DecodeNode>, u16), Huffma
                 i += 2;
             }
             b'I' => {
+                // Post-order means right child was pushed after left child.
                 let right = stack
                     .pop()
                     .ok_or(HuffmanError::InvalidFormat("Incorrect tree"))?;
@@ -413,6 +439,7 @@ fn decode_payload_compact(
         let mut bits = byte;
         for _ in 0..8 {
             if out.len() == len as usize {
+                // Ignore any pad bits after the last decoded symbol.
                 return Ok(out);
             }
 
@@ -498,6 +525,7 @@ fn decode_payload_stream<R: Read, W: Write>(
                     node_idx = root;
 
                     if out_len == out_buf.len() {
+                        // Flush in larger chunks to avoid per-byte write overhead.
                         out.write_all(&out_buf)?;
                         out_len = 0;
                     }
@@ -520,6 +548,7 @@ fn decode_payload_stream<R: Read, W: Write>(
 }
 
 fn validate_tree_size(tree_size: usize) -> Result<(), HuffmanError> {
+    // For post-order "Lx"/"I" encoding, valid sizes are 3*n - 1.
     if tree_size < MIN_TREE_BYTES || tree_size > MAX_TREE_BYTES || tree_size % 3 != 2 {
         return Err(HuffmanError::InvalidFormat("Incorrect tree"));
     }
@@ -539,7 +568,7 @@ fn decode_header_metadata(
         let stored = stored_crc.ok_or(HuffmanError::InvalidFormat("Read of header CRC failed"))?;
         let computed = crc16_ccitt(header_bytes);
         if stored != computed {
-            // Keep decoding with safe metadata fallback.
+            // Match C behavior: decode payload but do not trust metadata bits.
             return Ok((FALLBACK_PERMISSIONS, false));
         }
     }
@@ -573,6 +602,7 @@ fn parse_header_and_tree(input: &[u8]) -> Result<(Header, usize, u16, bool), Huf
     let (permissions, header_crc_ok) = decode_header_metadata(header, &header_bytes, stored_crc)?;
     let tree_size = header.tree_size as usize;
     validate_tree_size(tree_size)?;
+    // Ensure the serialized tree bytes are present before decode starts.
     if input.len() < offset + tree_size {
         return Err(HuffmanError::InvalidFormat("Read of tree failed"));
     }
@@ -628,6 +658,7 @@ pub fn decode_stream<R: Read, W: Write>(
         .read_exact(&mut saved_tree)
         .map_err(|_| HuffmanError::InvalidFormat("Read of tree failed"))?;
 
+    // Decode directly from input into output to avoid whole-file buffering.
     let (nodes, root) = load_tree_compact(&saved_tree)?;
     decode_payload_stream(&nodes, root, input, header.file_size, output)?;
     Ok(DecodeMetadata {
