@@ -48,12 +48,13 @@ Post-order encoding:
 2. Interior: serialize left subtree, then right subtree, then byte `'I'`.
 
 If a tree has `k` leaves, serialized size is `3k - 1`.
+In symbols: $S_{\text{tree}} = 3k - 1$.
 
 Decoder validation enforces:
 
-1. `tree_size >= 5`
-2. `tree_size <= 767`
-3. `tree_size % 3 == 2`
+1. $S_{\text{tree}} \ge 5$
+2. $S_{\text{tree}} \le 767$
+3. $S_{\text{tree}} \equiv 2 \pmod{3}$
 
 ## Core Data Structures (C)
 
@@ -162,15 +163,16 @@ Rust decode path is streaming in the CLI, mirroring C behavior for large files.
 
 ## Complexity
 
-Let `n` be input length and `k <= 256` distinct symbols.
+Let $n$ be input length and $k \le 256$ the number of distinct symbols.
 
-1. Histogram: O(n)
-2. Tree build: O(k^2) worst-case due to insertion sort enqueue
-3. Code generation: O(k)
-4. Encode payload walk: O(n * average_code_len)
-5. Decode payload walk: O(n * average_code_len)
+1. Histogram: $O(n)$
+2. Tree build: $O(k^2)$ worst-case due to insertion-sort enqueue
+3. Code generation: $O(k)$
+4. Encode payload walk: $O\!\left(n \times \bar{\ell}\right)$
+5. Decode payload walk: $O\!\left(n \times \bar{\ell}\right)$
 
-Because `k` is bounded by 256, queue complexity is effectively constant-scale.
+Here $\bar{\ell}$ is the average code length in bits. Because $k$ is bounded by
+$256$, queue complexity is effectively constant-scale in practice.
 
 ## Security and Failure Semantics
 
