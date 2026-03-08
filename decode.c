@@ -1,4 +1,5 @@
 #include "code.h"
+#include "crc16.h"
 #include "endian.h"
 #include "header.h"
 #include "huffman.h"
@@ -11,6 +12,7 @@
 #include <inttypes.h>
 #include <stdbool.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -38,13 +40,22 @@ static int print = false;
 static treeNode *loadTree(uint8_t savedTree[], uint16_t treeBytes) {
     uint32_t count = 0;
     stack *s = newStack();
+    if (s == NULL) {
+        ERROR("Failed to allocate stack");
+    }
 
     while (count < treeBytes) {
         if (savedTree[count] == 'L') {
+            if (count + 1 >= treeBytes) {
+                ERROR("Incorrect tree");
+            }
             count += 1;
             treeNode *t = newNode(savedTree[count], true, 1);
+            if (t == NULL) {
+                ERROR("Failed to allocate tree node");
+            }
             push(s, t);
-        } else {
+        } else if (savedTree[count] == 'I') {
             treeNode *a = NULL, *b = NULL;
 
             if (emptyS(s)) // Right node
@@ -61,12 +72,21 @@ static treeNode *loadTree(uint8_t savedTree[], uint16_t treeBytes) {
                 a = pop(s);
             }
 
-            push(s, join(a, b));
+            treeNode *t = join(a, b);
+            if (t == NULL) {
+                ERROR("Failed to allocate tree node");
+            }
+            push(s, t);
+        } else {
+            ERROR("Incorrect tree");
         }
         count += 1;
     }
 
     treeNode *tmp = pop(s);
+    if (tmp == NULL || !emptyS(s)) {
+        ERROR("Incorrect tree");
+    }
     delStack(s);
     return tmp;
 }
@@ -107,6 +127,9 @@ static void decodeFile(treeNode *root, int fileIn, int fileOut, uint64_t len) {
             // Walk left on 0, right on 1.
             // This is safe because the root can never decode to a symbol.
             r = (b == 0) ? r->left : r->right;
+            if (r == NULL) {
+                ERROR("Incorrect tree");
+            }
 
             // Emit symbol when leaf is reached, reset to root.
             if (r->leaf) {
@@ -195,14 +218,37 @@ int main(int argc, char **argv) {
     uint16_t permissions = isBig() ? swap16(h.permissions) : h.permissions;
     uint64_t origSize = isBig() ? swap64(h.file_size) : h.file_size;
 
-    if (magic != MAGIC) {
+    if (magic != MAGIC_V1 && magic != MAGIC_V2) {
         ERROR("Read of magic number failed");
     }
-    if (fileOut != STDOUT_FILENO && fchmod(fileOut, permissions) == -1) {
+
+    if (magic == MAGIC_V2) {
+        uint16_t headerCrcStored = 0;
+        if (read(fileIn, &headerCrcStored, sizeof(headerCrcStored)) < (ssize_t) sizeof(headerCrcStored)) {
+            ERROR("Read of header CRC failed");
+        }
+        headerCrcStored = isBig() ? swap16(headerCrcStored) : headerCrcStored;
+        uint16_t headerCrcComputed = crc16_ccitt((uint8_t *) &h, sizeof(Header));
+        if (headerCrcStored != headerCrcComputed) {
+            // Do not trust metadata from a damaged header.
+            // Keep decoding, but use read-only fallback permissions.
+            permissions = 0444;
+            fprintf(stderr, "Warning: header CRC mismatch, using safe fallback permissions 0444.\n");
+        }
+    }
+
+    if (treeBytes < 5 || treeBytes > (3 * BYTE - 1) || treeBytes % 3 != 2) {
+        ERROR("Incorrect tree");
+    }
+
+    if (fileOut != STDOUT_FILENO && fchmod(fileOut, permissions & 07777) == -1) {
         ERROR("Change of output file permissions failed");
     }
 
-    uint8_t savedTree[treeBytes];
+    uint8_t *savedTree = (uint8_t *) malloc(treeBytes);
+    if (savedTree == NULL) {
+        ERROR("Allocation of tree failed");
+    }
 
     // Pipes require this since they may return less than requested
 
@@ -219,6 +265,7 @@ int main(int argc, char **argv) {
     // Build a new tree
 
     treeNode *t = loadTree(savedTree, treeBytes);
+    free(savedTree);
     if (t == NULL) {
         ERROR("Loading tree failed");
     }

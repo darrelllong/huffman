@@ -1,4 +1,5 @@
 #include "code.h"
+#include "crc16.h"
 #include "usage.h"
 #include "endian.h"
 #include "header.h"
@@ -94,7 +95,7 @@ bool buffered_write(int file, uint8_t b[], uint32_t l, bool flush) {
     return true;
 }
 
-static treeNode *buildTree(int inFile, int outFile, Header *h) {
+static treeNode *buildTree(int inFile, Header *h) {
     uint64_t hist[BYTE] = { 0 };
 
     uint8_t unique = histogram(inFile, hist);
@@ -128,7 +129,6 @@ static treeNode *buildTree(int inFile, int outFile, Header *h) {
 
     treeBytes = leaves > 0 ? 3 * leaves - 1 : 0;
     h->tree_size = isBig() ? swap16(treeBytes) : treeBytes;
-    buffered_write(outFile, (uint8_t *) h, sizeof(Header), true);
 
     treeNode *t = NULL;
 
@@ -270,7 +270,6 @@ int main(int argc, char **argv) {
 
     struct stat fileStat;
     fstat(fileIn, &fileStat);
-    fchmod(fileOut, fileStat.st_mode);
     uint64_t origSize = fileStat.st_size;
 
     if (outputFile) {
@@ -286,6 +285,9 @@ int main(int argc, char **argv) {
     } else {
         fileOut = STDOUT_FILENO;
     }
+    if (fileOut != STDOUT_FILENO) {
+        fchmod(fileOut, fileStat.st_mode);
+    }
 
     // Build header, canonical is "Little Endian".
     Header h = {
@@ -295,7 +297,14 @@ int main(int argc, char **argv) {
     };
 
     // Build a Huffman tree, finish header and write it out.
-    treeNode *t = buildTree(fileIn, fileOut, &h);
+    treeNode *t = buildTree(fileIn, &h);
+
+    // Write the header and a CRC16 of the header bytes.
+    // Decoders can validate the header before trusting file metadata.
+    uint16_t headerCrc = crc16_ccitt((uint8_t *) &h, sizeof(Header));
+    uint16_t headerCrcOut = isBig() ? swap16(headerCrc) : headerCrc;
+    buffered_write(fileOut, (uint8_t *) &h, sizeof(Header), true);
+    buffered_write(fileOut, (uint8_t *) &headerCrcOut, sizeof(headerCrcOut), true);
 
     // Walk the tree to find the codes for each symbol
     code s = newCode();

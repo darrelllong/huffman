@@ -4,8 +4,6 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-#define MAGIC 0xBEEFD00D
-
 typedef struct DAH treeNode;
 
 typedef treeNode *item;
@@ -36,7 +34,13 @@ static inline void delTree(treeNode *h) {
 }
 
 static inline int compare(treeNode *l, treeNode *r) {
-    return (int) (l->count - r->count);
+    if (l->count < r->count) {
+        return -1;
+    }
+    if (l->count > r->count) {
+        return 1;
+    }
+    return 0;
 }
 
 extern void printTree(treeNode *t, int depth);
