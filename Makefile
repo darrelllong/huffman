@@ -1,6 +1,6 @@
-CC=cc
-CFLAGS=-Wall -Wextra -Wpedantic -Werror -Wshadow -Wparentheses -Oz -std=c17 -Isrc
-LDFLAGS=
+CC ?= cc
+CFLAGS ?= -Wall -Wextra -Wpedantic -Werror -Wshadow -Wparentheses -O3 -DNDEBUG -std=c17 -Isrc
+LDFLAGS ?=
 
 .PHONY	:
 all	: encode decode

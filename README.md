@@ -1,6 +1,7 @@
-# README #
+# Huffman #
 
-This README would normally document whatever steps are necessary to get your application up and running.
+Reference implementation of optimal static Huffman coding for 8-bit symbols,
+with matching C and Rust encoders/decoders.
 
 ### What is this repository for? ###
 
@@ -13,7 +14,17 @@ as small as possible since that saves only a few bytes at the cost of increased 
 
 ### How do I get set up? ###
 
-* make
+Build C tools:
+
+* `make`
+
+Build Rust tools:
+
+* `cd rust && cargo build --release`
+
+Run Rust tests:
+
+* `cd rust && cargo test`
 
 ### Layout ###
 
@@ -53,16 +64,16 @@ The following timing snapshot comes from:
 * source data: `workloads/pilot_runs/comparison_summary.csv`
 * kernel workload source: `workloads/kernel/README.md`
 
-Values are in **seconds**, with **95% CI width** and **repetitions (`n`)** reported per case.
+Values are in **seconds**, reported as **mean ± 95% CI**, with **repetitions (`n`)** per case.
 
-| Workload | Operation | C mean (s) | C CI95 width (s) | C n | Rust mean (s) | Rust CI95 width (s) | Rust n | Rust speedup |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Shakespeare | encode | `0.0638362` | `0.000646338` | `30` | `0.0459180` | `0.000308300` | `33` | `1.39x` |
-| Shakespeare | decode | `0.0950250` | `0.000648952` | `104` | `0.0553165` | `0.000972752` | `30` | `1.72x` |
-| Kipling | encode | `0.0174725` | `0.000271299` | `90` | `0.0140829` | `0.000905666` | `123` | `1.24x` |
-| Kipling | decode | `0.0257757` | `0.001915760` | `30` | `0.0151876` | `0.000286223` | `36` | `1.70x` |
-| Linux kernel 6.19.6 tarball | encode | `1.6701200` | `0.005375330` | `121` | `0.8236210` | `0.003724750` | `30` | `2.03x` |
-| Linux kernel 6.19.6 tarball | decode | `2.5661500` | `0.012740400` | `30` | `3.1048300` | `0.016188800` | `30` | `0.83x` |
+| Workload | Operation | C (s, mean ± 95% CI) | C n | Rust (s, mean ± 95% CI) | Rust n | Rust speedup |
+| --- | --- | --- | --- | --- | --- | --- |
+| Shakespeare | encode | `0.0619383 ± 0.000635901` | `60` | `0.0460462 ± 0.000652528` | `112` | `1.35x` |
+| Shakespeare | decode | `0.0785577 ± 0.015631300` | `50` | `0.0545279 ± 0.000555148` | `63` | `1.44x` |
+| Kipling | encode | `0.0169466 ± 0.000654773` | `57` | `0.0138650 ± 0.000172161` | `35` | `1.22x` |
+| Kipling | decode | `0.0204930 ± 0.000471669` | `30` | `0.0151804 ± 0.000263268` | `90` | `1.35x` |
+| Linux kernel 6.19.6 tarball | encode | `1.4267400 ± 0.009018640` | `30` | `0.8178160 ± 0.002684840` | `48` | `1.74x` |
+| Linux kernel 6.19.6 tarball | decode | `1.2403200 ± 0.009235380` | `60` | `3.0972300 ± 0.008790740` | `30` | `0.40x` |
 
 ### Contribution guidelines ###
 

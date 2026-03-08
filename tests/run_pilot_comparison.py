@@ -157,13 +157,13 @@ def main() -> int:
             "operation",
             "workload",
             "mean_seconds",
-            "ci_width_seconds",
+            "ci95_seconds",
             "ci_level_percent",
             "repetitions",
         ])
         writer.writerows(results)
 
-    print("\ncase,impl,operation,workload,mean_seconds,ci_width_seconds,ci_level_percent,repetitions")
+    print("\ncase,impl,operation,workload,mean_seconds,ci95_seconds,ci_level_percent,repetitions")
     for row in results:
         ci_level_str = "" if row[6] is None else str(row[6])
         print(",".join([
