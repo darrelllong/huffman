@@ -49,17 +49,20 @@ emit `MAGIC_V2` with the same CRC16 placement and preserve this byte layout.
 
 The following timing snapshot comes from:
 
-* `python3 tests/run_pilot_comparison.py --preset quick --session-limit 90 --out-dir workloads/pilot_runs`
+* `python3 tests/run_pilot_comparison.py --preset quick --session-limit 600 --out-dir workloads/pilot_runs`
 * source data: `workloads/pilot_runs/comparison_summary.csv`
+* kernel workload source: `workloads/kernel/README.md`
 
-Values are `mean ± CI` in seconds (Pilot quick preset).
+Values are in **seconds**, with **95% CI width** and **repetitions (`n`)** reported per case.
 
-| Workload | Operation | C | Rust | Rust speedup |
-| --- | --- | --- | --- | --- |
-| Shakespeare | encode | `0.0648737 ± 0.001386140` | `0.0464818 ± 0.000721462` | `1.40x` |
-| Shakespeare | decode | `0.1007790 ± 0.019890500` | `0.0549753 ± 0.000481145` | `1.83x` |
-| Kipling | encode | `0.0175804 ± 0.000282152` | `0.0139301 ± 0.000198056` | `1.26x` |
-| Kipling | decode | `0.0256239 ± 0.000867855` | `0.0154264 ± 0.000648532` | `1.66x` |
+| Workload | Operation | C mean (s) | C CI95 width (s) | C n | Rust mean (s) | Rust CI95 width (s) | Rust n | Rust speedup |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Shakespeare | encode | `0.0638362` | `0.000646338` | `30` | `0.0459180` | `0.000308300` | `33` | `1.39x` |
+| Shakespeare | decode | `0.0950250` | `0.000648952` | `104` | `0.0553165` | `0.000972752` | `30` | `1.72x` |
+| Kipling | encode | `0.0174725` | `0.000271299` | `90` | `0.0140829` | `0.000905666` | `123` | `1.24x` |
+| Kipling | decode | `0.0257757` | `0.001915760` | `30` | `0.0151876` | `0.000286223` | `36` | `1.70x` |
+| Linux kernel 6.19.6 tarball | encode | `1.6701200` | `0.005375330` | `121` | `0.8236210` | `0.003724750` | `30` | `2.03x` |
+| Linux kernel 6.19.6 tarball | decode | `2.5661500` | `0.012740400` | `30` | `3.1048300` | `0.016188800` | `30` | `0.83x` |
 
 ### Contribution guidelines ###
 
