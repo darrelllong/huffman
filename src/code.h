@@ -3,6 +3,7 @@
 #include "sizes.h"
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <unistd.h>
 
@@ -58,24 +59,39 @@ static inline bool fullCode(code *c) {
 // to be written. codeP is a pointer to the end of the buffer, and codeC is a
 // count of the total number of code bits.
 
-static uint8_t codeB[KB];
-static uint32_t codeP = 0;
-static uint64_t codeC = 0;
+extern uint8_t codeB[KB];
+extern uint32_t codeP;
+extern uint64_t codeC;
+
+static inline bool code_write_full(int file, const uint8_t *buf, size_t len) {
+    size_t written = 0;
+    while (written < len) {
+        ssize_t n = write(file, buf + written, len - written);
+        if (n <= 0) {
+            return false;
+        }
+        written += (size_t) n;
+    }
+    return true;
+}
 
 // flushCode will write any code bytes that have not already been written.
 
-static inline void flushCode(int file) {
+static inline bool flushCode(int file) {
     if (codeP) {
-        write(file, codeB, codeP % 8 ? codeP / 8 + 1 : codeP / 8);
+        size_t bytes = (size_t) (codeP % 8 ? codeP / 8 + 1 : codeP / 8);
+        if (!code_write_full(file, codeB, bytes)) {
+            return false;
+        }
     }
-    return;
+    return true;
 }
 
 // appendCode is a bit tricky: append the bits from codes into a buffer. If
 // the buffer fills, then write it and continue appending code bits (if there
 // are any left in the current code).
 
-static inline void appendCode(int file, code c) {
+static inline bool appendCode(int file, code c) {
     codeC += c.l;
     for (uint32_t i = 0; i < c.l; i += 1) {
         if (c.bits[i / 8] & (0x1 << (i % 8))) // Bit set?
@@ -87,9 +103,11 @@ static inline void appendCode(int file, code c) {
 
         codeP += 1;
         if (codeP == KB * 8) { // Flush if the buffer is full
-            write(file, codeB, KB);
+            if (!code_write_full(file, codeB, KB)) {
+                return false;
+            }
             codeP = 0;
         }
     }
-    return;
+    return true;
 }

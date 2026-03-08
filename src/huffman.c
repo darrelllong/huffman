@@ -56,12 +56,3 @@ void printTree(treeNode *t, int depth) {
     }
     return;
 }
-
-void freeTree(treeNode *t) {
-    if (t) {
-        freeTree(t->left);
-        freeTree(t->right);
-        free(t);
-    }
-    return;
-}

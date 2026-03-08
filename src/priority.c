@@ -4,7 +4,7 @@
 #include <stdlib.h>
 
 static inline uint32_t succ(uint32_t x, uint32_t n) {
-    return (x + n + 1) % n;
+    return (x + 1) % n;
 }
 
 // Number theory says modulo should be positive, but in C we have -1 % n = -1,
@@ -73,16 +73,14 @@ bool enqueue(queue *q, item i) {
     if (full(q)) {
         return false;
     } else {
-        if (q && q->Q) {
-            uint32_t slot = q->head;
+        uint32_t slot = q->head;
 
-            while (slot != q->tail && compare(q->Q[pred(slot, q->size)], i) > 0) {
-                q->Q[slot] = q->Q[pred(slot, q->size)];
-                slot = pred(slot, q->size);
-            }
-            q->Q[slot] = i;
-            q->head = succ(q->head, q->size);
+        while (slot != q->tail && compare(q->Q[pred(slot, q->size)], i) > 0) {
+            q->Q[slot] = q->Q[pred(slot, q->size)];
+            slot = pred(slot, q->size);
         }
+        q->Q[slot] = i;
+        q->head = succ(q->head, q->size);
         return true;
     }
 }
@@ -91,10 +89,8 @@ bool dequeue(queue *q, item *i) {
     if (empty(q)) {
         return false;
     } else {
-        if (q && q->Q) {
-            *i = q->Q[q->tail];
-            q->tail = succ(q->tail, q->size);
-        }
+        *i = q->Q[q->tail];
+        q->tail = succ(q->tail, q->size);
         return true;
     }
 }

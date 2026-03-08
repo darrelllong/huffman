@@ -519,6 +519,33 @@ fn decode_payload_stream<R: Read, W: Write>(
     Ok(())
 }
 
+fn validate_tree_size(tree_size: usize) -> Result<(), HuffmanError> {
+    if tree_size < MIN_TREE_BYTES || tree_size > MAX_TREE_BYTES || tree_size % 3 != 2 {
+        return Err(HuffmanError::InvalidFormat("Incorrect tree"));
+    }
+    Ok(())
+}
+
+fn decode_header_metadata(
+    header: Header,
+    header_bytes: &[u8; 16],
+    stored_crc: Option<u16>,
+) -> Result<(u16, bool), HuffmanError> {
+    if header.magic != MAGIC_V1 && header.magic != MAGIC_V2 {
+        return Err(HuffmanError::InvalidFormat("Read of magic number failed"));
+    }
+
+    if header.magic == MAGIC_V2 {
+        let stored = stored_crc.ok_or(HuffmanError::InvalidFormat("Read of header CRC failed"))?;
+        let computed = crc16_ccitt(header_bytes);
+        if stored != computed {
+            // Keep decoding with safe metadata fallback.
+            return Ok((FALLBACK_PERMISSIONS, false));
+        }
+    }
+    Ok((header.permissions, true))
+}
+
 fn parse_header_and_tree(input: &[u8]) -> Result<(Header, usize, u16, bool), HuffmanError> {
     if input.len() < 16 {
         return Err(HuffmanError::InvalidFormat("Read of header failed"));
@@ -526,37 +553,26 @@ fn parse_header_and_tree(input: &[u8]) -> Result<(Header, usize, u16, bool), Huf
 
     let header_bytes: [u8; 16] = input[0..16].try_into().expect("slice length checked");
     let header = read_header_bytes(&header_bytes)?;
-    let magic = header.magic;
-    if magic != MAGIC_V1 && magic != MAGIC_V2 {
-        return Err(HuffmanError::InvalidFormat("Read of magic number failed"));
-    }
 
     let mut offset = 16usize;
-    let mut permissions = header.permissions;
-    let mut header_crc_ok = true;
-    if magic == MAGIC_V2 {
+    let stored_crc = if header.magic == MAGIC_V2 {
         if input.len() < offset + 2 {
             return Err(HuffmanError::InvalidFormat("Read of header CRC failed"));
         }
-        let stored_crc = u16::from_le_bytes(
+        let crc = u16::from_le_bytes(
             input[offset..offset + 2]
                 .try_into()
                 .expect("slice length checked"),
         );
         offset += 2;
+        Some(crc)
+    } else {
+        None
+    };
 
-        let computed_crc = crc16_ccitt(&header_bytes);
-        if stored_crc != computed_crc {
-            // Keep decoding with safe metadata fallback.
-            permissions = FALLBACK_PERMISSIONS;
-            header_crc_ok = false;
-        }
-    }
-
+    let (permissions, header_crc_ok) = decode_header_metadata(header, &header_bytes, stored_crc)?;
     let tree_size = header.tree_size as usize;
-    if tree_size < MIN_TREE_BYTES || tree_size > MAX_TREE_BYTES || tree_size % 3 != 2 {
-        return Err(HuffmanError::InvalidFormat("Incorrect tree"));
-    }
+    validate_tree_size(tree_size)?;
     if input.len() < offset + tree_size {
         return Err(HuffmanError::InvalidFormat("Read of tree failed"));
     }
@@ -594,29 +610,19 @@ pub fn decode_stream<R: Read, W: Write>(
         .read_exact(&mut header_bytes)
         .map_err(|_| HuffmanError::InvalidFormat("Read of header failed"))?;
     let header = read_header_bytes(&header_bytes)?;
-    if header.magic != MAGIC_V1 && header.magic != MAGIC_V2 {
-        return Err(HuffmanError::InvalidFormat("Read of magic number failed"));
-    }
-
-    let mut permissions = header.permissions;
-    let mut header_crc_ok = true;
-    if header.magic == MAGIC_V2 {
+    let stored_crc = if header.magic == MAGIC_V2 {
         let mut crc_bytes = [0u8; 2];
         input
             .read_exact(&mut crc_bytes)
             .map_err(|_| HuffmanError::InvalidFormat("Read of header CRC failed"))?;
-        let stored_crc = u16::from_le_bytes(crc_bytes);
-        let computed_crc = crc16_ccitt(&header_bytes);
-        if stored_crc != computed_crc {
-            permissions = FALLBACK_PERMISSIONS;
-            header_crc_ok = false;
-        }
-    }
+        Some(u16::from_le_bytes(crc_bytes))
+    } else {
+        None
+    };
+    let (permissions, header_crc_ok) = decode_header_metadata(header, &header_bytes, stored_crc)?;
 
     let tree_size = header.tree_size as usize;
-    if tree_size < MIN_TREE_BYTES || tree_size > MAX_TREE_BYTES || tree_size % 3 != 2 {
-        return Err(HuffmanError::InvalidFormat("Incorrect tree"));
-    }
+    validate_tree_size(tree_size)?;
     let mut saved_tree = vec![0u8; tree_size];
     input
         .read_exact(&mut saved_tree)

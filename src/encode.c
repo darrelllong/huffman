@@ -33,13 +33,28 @@ static inline char *strdup_fallback(const char *s) {
 }
 #endif
 
-static int verbose = false;
-static int print = false;
-static int fullTree = false;
+static bool verbose = false;
+static bool print = false;
+static bool fullTree = false;
 
 static uint32_t magicNumber = MAGIC;
 static uint16_t leaves = 0;
 static uint16_t treeBytes;
+uint8_t codeB[KB];
+uint32_t codeP = 0;
+uint64_t codeC = 0;
+
+static bool write_full(int file, const uint8_t *buf, size_t len) {
+    size_t written = 0;
+    while (written < len) {
+        ssize_t n = write(file, buf + written, len - written);
+        if (n <= 0) {
+            return false;
+        }
+        written += (size_t) n;
+    }
+    return true;
+}
 
 // A temporary file, since mkstemp() is not ANSI.
 
@@ -108,8 +123,12 @@ static treeNode *buildTree(int inFile, Header *h) {
 
     if (unique < 2) // Less than two symbols? We need stand-ins.
     {
-        hist[0x00] = hist[0x00] ? hist[0x00] : hist[0x00] + 1;
-        hist[0xFF] = hist[0xFF] ? hist[0xFF] : hist[0xFF] + 1;
+        if (!hist[0x00]) {
+            hist[0x00] = 1;
+        }
+        if (!hist[0xFF]) {
+            hist[0xFF] = 1;
+        }
     }
 
     // We provide the option to building a full tree or a minimal tree.
@@ -184,7 +203,7 @@ static void buildCode(code s, treeNode *t, code c[]) {
     }
 }
 
-static void encodeFile(int fileIn, int fileOut, code c[]) {
+static bool encodeFile(int fileIn, int fileOut, code c[]) {
 
     uint8_t b[KB];
     long count;
@@ -193,11 +212,12 @@ static void encodeFile(int fileIn, int fileOut, code c[]) {
 
     while ((count = read(fileIn, b, KB)) > 0) { // Read a block
         for (int i = 0; i < count; i += 1) { // Scan through the block
-            appendCode(fileOut, c[b[i]]); // Append the code for each byte
+            if (!appendCode(fileOut, c[b[i]])) { // Append code for each byte
+                return false;
+            }
         }
     }
-    flushCode(fileOut);
-    return;
+    return flushCode(fileOut);
 }
 
 int main(int argc, char **argv) {
@@ -208,9 +228,13 @@ int main(int argc, char **argv) {
     bool usage = false;
 
     static struct option options[] = {
-          { "input", required_argument, NULL, 'i' }, { "output", required_argument, NULL, 'o' },
-          { "verbose", no_argument, &verbose, 'v' }, { "print", no_argument, &print, 'p' },
-          { "full", no_argument, &fullTree, 'f' }, { NULL, 0, NULL, 0 } };
+        { "input", required_argument, NULL, 'i' },
+        { "output", required_argument, NULL, 'o' },
+        { "verbose", no_argument, NULL, 'v' },
+        { "print", no_argument, NULL, 'p' },
+        { "full", no_argument, NULL, 'f' },
+        { NULL, 0, NULL, 0 },
+    };
 
     int c;
     while ((c = getopt_long(argc, argv, "-fupvi:o:", options, NULL)) != -1) {
@@ -231,8 +255,10 @@ int main(int argc, char **argv) {
             fullTree = true;
             break;
         case 'u':
-              usage = true;
-              break;
+            usage = true;
+            break;
+        default:
+            break;
         }
     }
 
@@ -261,7 +287,14 @@ int main(int argc, char **argv) {
 
         long len;
         while ((len = read(STDIN_FILENO, buffer, KB)) > 0) {
-            write(tmpFile, buffer, len);
+            if (!write_full(tmpFile, buffer, (size_t) len)) {
+                char s[1024] = { 0 };
+                strncat(s, argv[0], sizeof(s) - strlen(s) - 1);
+                strncat(s, ": ", sizeof(s) - strlen(s) - 1);
+                strncat(s, "stdin (/tmp)", sizeof(s) - strlen(s) - 1);
+                perror(s);
+                exit(1);
+            }
         }
         fileIn = tmpFile;
     }
@@ -275,9 +308,9 @@ int main(int argc, char **argv) {
     if (outputFile) {
         if ((fileOut = open(outputFile, O_CREAT | O_EXCL | O_RDWR | O_TRUNC, 0644)) < 0) {
             char s[1024] = { 0 };
-            strcat(s, argv[0]);
-            strcat(s, ": ");
-            strcat(s, outputFile);
+            strncat(s, argv[0], sizeof(s) - strlen(s) - 1);
+            strncat(s, ": ", sizeof(s) - strlen(s) - 1);
+            strncat(s, outputFile, sizeof(s) - strlen(s) - 1);
             perror(s);
             exit(1);
         }
@@ -303,8 +336,14 @@ int main(int argc, char **argv) {
     // Decoders can validate the header before trusting file metadata.
     uint16_t headerCrc = crc16_ccitt((uint8_t *) &h, sizeof(Header));
     uint16_t headerCrcOut = isBig() ? swap16(headerCrc) : headerCrc;
-    buffered_write(fileOut, (uint8_t *) &h, sizeof(Header), true);
-    buffered_write(fileOut, (uint8_t *) &headerCrcOut, sizeof(headerCrcOut), true);
+    if (!buffered_write(fileOut, (uint8_t *) &h, sizeof(Header), true)) {
+        perror("Write of header failed");
+        exit(1);
+    }
+    if (!buffered_write(fileOut, (uint8_t *) &headerCrcOut, sizeof(headerCrcOut), true)) {
+        perror("Write of header CRC failed");
+        exit(1);
+    }
 
     // Walk the tree to find the codes for each symbol
     code s = newCode();
@@ -313,9 +352,15 @@ int main(int argc, char **argv) {
 
     // Output the tree
     dumpTree(fileOut, t);
-    buffered_write(fileOut, (uint8_t *) 0, 0, true);
+    if (!buffered_write(fileOut, (uint8_t *) 0, 0, true)) {
+        perror("Write of tree failed");
+        exit(1);
+    }
 
-    encodeFile(fileIn, fileOut, builtCode); // Output the encoded file
+    if (!encodeFile(fileIn, fileOut, builtCode)) { // Output the encoded file
+        perror("Write of encoded payload failed");
+        exit(1);
+    }
 
     if (verbose) {
         fprintf(stderr, "Original %" PRIu64 " bits: ", 8 * origSize);

@@ -38,13 +38,19 @@ item pop(stack *s) {
 // run out of memory. But if that happens, then you have bigger problems.
 
 void push(stack *s, item i) {
+    if (!s || !s->entries) {
+        return;
+    }
     if (s->top == s->size) {
-        s->size *= 2;
-        s->entries = (item *) realloc(s->entries, s->size * sizeof(item));
+        uint32_t newSize = s->size * 2;
+        item *tmp = (item *) realloc(s->entries, newSize * sizeof(item));
+        if (tmp == NULL) {
+            return; // Out of memory: preserve previous stack state.
+        }
+        s->entries = tmp;
+        s->size = newSize;
     }
-    if (s && s->entries) {
-        s->entries[s->top] = i;
-        s->top += 1;
-    }
+    s->entries[s->top] = i;
+    s->top += 1;
     return;
 }

@@ -34,8 +34,20 @@ static inline char *strdup_fallback(const char *s) {
 }
 #endif
 
-static int verbose = false;
-static int print = false;
+static bool verbose = false;
+static bool print = false;
+
+static bool write_full(int file, const uint8_t *buf, size_t len) {
+    size_t written = 0;
+    while (written < len) {
+        ssize_t n = write(file, buf + written, len - written);
+        if (n <= 0) {
+            return false;
+        }
+        written += (size_t) n;
+    }
+    return true;
+}
 
 static treeNode *loadTree(uint8_t savedTree[], uint16_t treeBytes) {
     uint32_t count = 0;
@@ -56,23 +68,21 @@ static treeNode *loadTree(uint8_t savedTree[], uint16_t treeBytes) {
             }
             push(s, t);
         } else if (savedTree[count] == 'I') {
-            treeNode *a = NULL, *b = NULL;
+            treeNode *left = NULL, *right = NULL;
 
-            if (emptyS(s)) // Right node
-            {
+            if (emptyS(s)) {
                 ERROR("Incorrect tree");
             } else {
-                b = pop(s);
+                right = pop(s); // Right child
             }
 
-            if (emptyS(s)) // Left node
-            {
+            if (emptyS(s)) {
                 ERROR("Incorrect tree");
             } else {
-                a = pop(s);
+                left = pop(s); // Left child
             }
 
-            treeNode *t = join(a, b);
+            treeNode *t = join(left, right);
             if (t == NULL) {
                 ERROR("Failed to allocate tree node");
             }
@@ -136,7 +146,9 @@ static void decodeFile(treeNode *root, int fileIn, int fileOut, uint64_t len) {
                 len -= 1;
                 buffer[bP++] = r->symbol;
                 if (bP == BLK) {
-                    write(fileOut, buffer, bP);
+                    if (!write_full(fileOut, buffer, bP)) {
+                        ERROR("Write failed");
+                    }
                     bP = 0;
                 }
                 r = root;
@@ -145,7 +157,9 @@ static void decodeFile(treeNode *root, int fileIn, int fileOut, uint64_t len) {
     }
     if (bP != 0) // Remainder
     {
-        write(fileOut, buffer, bP);
+        if (!write_full(fileOut, buffer, bP)) {
+            ERROR("Write failed");
+        }
     }
     return;
 }
@@ -155,8 +169,8 @@ int main(int argc, char **argv) {
     char *inputFile = NULL, *outputFile = NULL;
 
     static struct option options[] = { { "input", required_argument, NULL, 'i' },
-        { "output", required_argument, NULL, 'o' }, { "verbose", no_argument, &verbose, 'v' },
-        { "print", no_argument, &print, 'p' }, { NULL, 0, NULL, 0 } };
+        { "output", required_argument, NULL, 'o' }, { "verbose", no_argument, NULL, 'v' },
+        { "print", no_argument, NULL, 'p' }, { NULL, 0, NULL, 0 } };
 
     int c;
     while ((c = getopt_long(argc, argv, "-pvi:o:", options, NULL)) != -1) {
@@ -250,15 +264,21 @@ int main(int argc, char **argv) {
         ERROR("Allocation of tree failed");
     }
 
-    // Pipes require this since they may return less than requested
+    // Pipes may return fewer bytes than requested; keep reading until complete.
+    size_t total = (size_t) treeBytes;
+    size_t sum = 0;
+    while (sum < total) {
+        ssize_t readSz = read(fileIn, savedTree + sum, total - sum);
+        if (readSz < 0) {
+            ERROR("Read of tree failed");
+        }
+        if (readSz == 0) {
+            break;
+        }
+        sum += (size_t) readSz;
+    }
 
-    long readSz = 0, sum = 0;
-    do {
-        readSz = read(fileIn, savedTree + sum, treeBytes - sum);
-        sum += readSz;
-    } while (sum < treeBytes && readSz > 0);
-
-    if (sum < treeBytes) {
+    if (sum != total) {
         ERROR("Read of tree failed");
     }
 
