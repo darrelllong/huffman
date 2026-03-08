@@ -61,6 +61,7 @@ emit `MAGIC_V2` with the same CRC16 placement and preserve this byte layout.
 The following timing snapshot comes from:
 
 * `python3 tests/run_pilot_comparison.py --preset quick --session-limit 600 --out-dir workloads/pilot_runs`
+* helper scripts: `tests/pilot_run_local.sh` and `tests/pilot_run_wigner.sh`
 * source data: `workloads/pilot_runs/comparison_summary.csv`
 * kernel workload source: `workloads/kernel/README.md`
 
