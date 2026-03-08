@@ -1,3 +1,8 @@
+//! CLI front-end for Huffman encoding.
+//!
+//! This wrapper is intentionally thin: it handles argument parsing and I/O
+//! policy, then delegates format logic to `huffman_rs::encode_bytes`.
+
 use std::env;
 use std::fs::File;
 use std::fs::OpenOptions;
@@ -17,8 +22,8 @@ struct Args {
 }
 
 fn parse_args() -> Result<Args, String> {
-    // Parse CLI flags into a typed argument struct.
-    // Unknown or malformed arguments fail fast with a clear usage error.
+    // Keep argument parsing strict so caller mistakes fail immediately.
+    // We treat help as a usage error path to keep one simple exit flow.
     let mut args = Args::default();
     let mut it = env::args().skip(1);
     while let Some(arg) = it.next() {
@@ -46,8 +51,8 @@ fn parse_args() -> Result<Args, String> {
 }
 
 fn read_all_input(path: Option<&PathBuf>) -> Result<Vec<u8>, io::Error> {
-    // Collect full plaintext input for encode_bytes():
-    // read from file when -i is present, otherwise read stdin to EOF.
+    // Encoder builds a histogram before emitting payload bits, so we need one
+    // complete input buffer here (matching the C encoder's full-input model).
     let mut data = Vec::new();
     match path {
         Some(p) => {
@@ -74,6 +79,7 @@ fn input_mode(path: Option<&PathBuf>) -> u16 {
 
 #[cfg(not(unix))]
 fn input_mode(_path: Option<&PathBuf>) -> u16 {
+    // Non-Unix targets do not carry Unix mode bits in portable metadata.
     0o644
 }
 
@@ -107,8 +113,8 @@ fn main() {
 
     match args.output.as_ref() {
         Some(path) => {
-            // Avoid clobbering existing files.
-            // create_new(true) mirrors C's O_CREAT|O_EXCL behavior.
+            // Avoid clobbering existing files and eliminate TOCTOU races:
+            // one atomic open call either creates the file or fails.
             let mut f = match OpenOptions::new().create_new(true).write(true).open(path) {
                 Ok(v) => v,
                 Err(e) => {
