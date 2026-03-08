@@ -1,0 +1,9 @@
+case,impl,mode,mean_sec,ci_sec,readings
+c_encode_shakespeare,c,encode,0.0648737,0.00138614,30
+rust_encode_shakespeare,rust,encode,0.0464818,0.000721462,171
+c_decode_shakespeare,c,decode,0.100779,0.0198905,54
+rust_decode_shakespeare,rust,decode,0.0549753,0.000481145,78
+c_encode_kipling,c,encode,0.0175804,0.000282152,60
+rust_encode_kipling,rust,encode,0.0139301,0.000198056,71
+c_decode_kipling,c,decode,0.0256239,0.000867855,31
+rust_decode_kipling,rust,decode,0.0154264,0.000648532,30

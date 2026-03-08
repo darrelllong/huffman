@@ -1,0 +1,19 @@
+[package]
+name = "huffman-rs"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "huffman_rs"
+path = "src/lib.rs"
+
+[[bin]]
+name = "encode"
+path = "src/bin/encode.rs"
+
+[[bin]]
+name = "decode"
+path = "src/bin/decode.rs"
+
+[dev-dependencies]
+tempfile = "3.16"
