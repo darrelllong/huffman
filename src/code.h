@@ -1,11 +1,10 @@
 #pragma once
 
+#include "io.h"
 #include "sizes.h"
 
 #include <stdbool.h>
-#include <stddef.h>
 #include <stdint.h>
-#include <unistd.h>
 
 typedef struct code {
     uint8_t bits[CODE / 8];
@@ -63,24 +62,12 @@ extern uint8_t codeB[KB];
 extern uint32_t codeP;
 extern uint64_t codeC;
 
-static inline bool code_write_full(int file, const uint8_t *buf, size_t len) {
-    size_t written = 0;
-    while (written < len) {
-        ssize_t n = write(file, buf + written, len - written);
-        if (n <= 0) {
-            return false;
-        }
-        written += (size_t) n;
-    }
-    return true;
-}
-
 // flushCode will write any code bytes that have not already been written.
 
 static inline bool flushCode(int file) {
     if (codeP) {
         size_t bytes = (size_t) (codeP % 8 ? codeP / 8 + 1 : codeP / 8);
-        if (!code_write_full(file, codeB, bytes)) {
+        if (!io_write_full(file, codeB, bytes)) {
             return false;
         }
     }
@@ -103,7 +90,7 @@ static inline bool appendCode(int file, code c) {
 
         codeP += 1;
         if (codeP == KB * 8) { // Flush if the buffer is full
-            if (!code_write_full(file, codeB, KB)) {
+            if (!io_write_full(file, codeB, KB)) {
                 return false;
             }
             codeP = 0;

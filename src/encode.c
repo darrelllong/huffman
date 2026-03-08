@@ -4,6 +4,7 @@
 #include "endian.h"
 #include "header.h"
 #include "huffman.h"
+#include "io.h"
 #include "queue.h"
 #include "sizes.h"
 
@@ -43,18 +44,6 @@ static uint16_t treeBytes;
 uint8_t codeB[KB];
 uint32_t codeP = 0;
 uint64_t codeC = 0;
-
-static bool write_full(int file, const uint8_t *buf, size_t len) {
-    size_t written = 0;
-    while (written < len) {
-        ssize_t n = write(file, buf + written, len - written);
-        if (n <= 0) {
-            return false;
-        }
-        written += (size_t) n;
-    }
-    return true;
-}
 
 // A temporary file, since mkstemp() is not ANSI.
 
@@ -287,7 +276,7 @@ int main(int argc, char **argv) {
 
         long len;
         while ((len = read(STDIN_FILENO, buffer, KB)) > 0) {
-            if (!write_full(tmpFile, buffer, (size_t) len)) {
+            if (!io_write_full(tmpFile, buffer, (size_t) len)) {
                 char s[1024] = { 0 };
                 strncat(s, argv[0], sizeof(s) - strlen(s) - 1);
                 strncat(s, ": ", sizeof(s) - strlen(s) - 1);
@@ -353,7 +342,7 @@ int main(int argc, char **argv) {
     // Output the tree
     dumpTree(fileOut, t);
     if (!buffered_write(fileOut, (uint8_t *) 0, 0, true)) {
-        perror("Write of tree failed");
+        perror("Flush of output buffer failed");
         exit(1);
     }
 

@@ -3,6 +3,7 @@
 #include "endian.h"
 #include "header.h"
 #include "huffman.h"
+#include "io.h"
 #include "queue.h"
 #include "sizes.h"
 #include "stack.h"
@@ -36,18 +37,6 @@ static inline char *strdup_fallback(const char *s) {
 
 static bool verbose = false;
 static bool print = false;
-
-static bool write_full(int file, const uint8_t *buf, size_t len) {
-    size_t written = 0;
-    while (written < len) {
-        ssize_t n = write(file, buf + written, len - written);
-        if (n <= 0) {
-            return false;
-        }
-        written += (size_t) n;
-    }
-    return true;
-}
 
 static treeNode *loadTree(uint8_t savedTree[], uint16_t treeBytes) {
     uint32_t count = 0;
@@ -146,7 +135,7 @@ static void decodeFile(treeNode *root, int fileIn, int fileOut, uint64_t len) {
                 len -= 1;
                 buffer[bP++] = r->symbol;
                 if (bP == BLK) {
-                    if (!write_full(fileOut, buffer, bP)) {
+                    if (!io_write_full(fileOut, buffer, bP)) {
                         ERROR("Write failed");
                     }
                     bP = 0;
@@ -157,7 +146,7 @@ static void decodeFile(treeNode *root, int fileIn, int fileOut, uint64_t len) {
     }
     if (bP != 0) // Remainder
     {
-        if (!write_full(fileOut, buffer, bP)) {
+        if (!io_write_full(fileOut, buffer, bP)) {
             ERROR("Write failed");
         }
     }
@@ -223,7 +212,7 @@ int main(int argc, char **argv) {
 
     // Read and validate header.
     Header h;
-    if (read(fileIn, &h, sizeof(Header)) < (ssize_t) sizeof(Header)) {
+    if (!io_read_full(fileIn, (uint8_t *) &h, sizeof(Header))) {
         ERROR("Read of header failed");
     }
 
@@ -238,7 +227,7 @@ int main(int argc, char **argv) {
 
     if (magic == MAGIC_V2) {
         uint16_t headerCrcStored = 0;
-        if (read(fileIn, &headerCrcStored, sizeof(headerCrcStored)) < (ssize_t) sizeof(headerCrcStored)) {
+        if (!io_read_full(fileIn, (uint8_t *) &headerCrcStored, sizeof(headerCrcStored))) {
             ERROR("Read of header CRC failed");
         }
         headerCrcStored = isBig() ? swap16(headerCrcStored) : headerCrcStored;
@@ -264,21 +253,7 @@ int main(int argc, char **argv) {
         ERROR("Allocation of tree failed");
     }
 
-    // Pipes may return fewer bytes than requested; keep reading until complete.
-    size_t total = (size_t) treeBytes;
-    size_t sum = 0;
-    while (sum < total) {
-        ssize_t readSz = read(fileIn, savedTree + sum, total - sum);
-        if (readSz < 0) {
-            ERROR("Read of tree failed");
-        }
-        if (readSz == 0) {
-            break;
-        }
-        sum += (size_t) readSz;
-    }
-
-    if (sum != total) {
+    if (!io_read_full(fileIn, savedTree, (size_t) treeBytes)) {
         ERROR("Read of tree failed");
     }
 
