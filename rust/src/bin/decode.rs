@@ -4,7 +4,7 @@ use std::fs::OpenOptions;
 use std::io::{self, Read, Write};
 use std::path::PathBuf;
 
-use huffman_rs::decode_bytes;
+use huffman_rs::decode_stream;
 
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
@@ -41,15 +41,6 @@ fn parse_args() -> Result<Args, String> {
     Ok(args)
 }
 
-fn read_all_input(path: Option<&PathBuf>) -> Result<Vec<u8>, io::Error> {
-    let mut data = Vec::new();
-    match path {
-        Some(p) => File::open(p)?.read_to_end(&mut data)?,
-        None => io::stdin().read_to_end(&mut data)?,
-    };
-    Ok(data)
-}
-
 fn main() {
     let args = match parse_args() {
         Ok(v) => v,
@@ -58,25 +49,6 @@ fn main() {
             std::process::exit(1);
         }
     };
-
-    let input = match read_all_input(args.input.as_ref()) {
-        Ok(v) => v,
-        Err(e) => {
-            eprintln!("decode: read input failed: {e}");
-            std::process::exit(1);
-        }
-    };
-
-    let decoded = match decode_bytes(&input) {
-        Ok(v) => v,
-        Err(e) => {
-            eprintln!("decode: {e}");
-            std::process::exit(1);
-        }
-    };
-    if !decoded.header_crc_ok && decoded.format_magic != huffman_rs::MAGIC_V1 {
-        eprintln!("Warning: header CRC mismatch, using safe fallback permissions 0444.");
-    }
 
     match args.output.as_ref() {
         Some(path) => {
@@ -88,6 +60,29 @@ fn main() {
                 }
             };
 
+            let mut input: Box<dyn Read> = match args.input.as_ref() {
+                Some(p) => match File::open(p) {
+                    Ok(v) => Box::new(v),
+                    Err(e) => {
+                        eprintln!("decode: read input failed: {e}");
+                        std::process::exit(1);
+                    }
+                },
+                None => Box::new(io::stdin().lock()),
+            };
+
+            let decoded = match decode_stream(&mut input, &mut f) {
+                Ok(v) => v,
+                Err(e) => {
+                    eprintln!("decode: {e}");
+                    std::process::exit(1);
+                }
+            };
+
+            if !decoded.header_crc_ok && decoded.format_magic != huffman_rs::MAGIC_V1 {
+                eprintln!("Warning: header CRC mismatch, using safe fallback permissions 0444.");
+            }
+
             #[cfg(unix)]
             {
                 let mode = decoded.permissions & 0o7777;
@@ -96,14 +91,21 @@ fn main() {
                     std::process::exit(1);
                 }
             }
-
-            if let Err(e) = f.write_all(&decoded.data) {
-                eprintln!("decode: write output failed: {e}");
-                std::process::exit(1);
-            }
         }
         None => {
-            if let Err(e) = io::stdout().write_all(&decoded.data) {
+            let mut stdin = io::stdin().lock();
+            let mut stdout = io::stdout().lock();
+            let decoded = match decode_stream(&mut stdin, &mut stdout) {
+                Ok(v) => v,
+                Err(e) => {
+                    eprintln!("decode: {e}");
+                    std::process::exit(1);
+                }
+            };
+            if !decoded.header_crc_ok && decoded.format_magic != huffman_rs::MAGIC_V1 {
+                eprintln!("Warning: header CRC mismatch, using safe fallback permissions 0444.");
+            }
+            if let Err(e) = stdout.flush() {
                 eprintln!("decode: write stdout failed: {e}");
                 std::process::exit(1);
             }

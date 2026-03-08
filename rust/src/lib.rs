@@ -1,6 +1,7 @@
 use std::collections::VecDeque;
 use std::fmt;
 use std::io;
+use std::io::{Read, Write};
 
 pub const MAGIC_V1: u32 = 0xBEEFD00D;
 pub const MAGIC_V2: u32 = 0xBEEFD00E;
@@ -51,6 +52,13 @@ pub struct DecodeResult {
     pub format_magic: u32,
 }
 
+#[derive(Clone, Copy, Debug)]
+pub struct DecodeMetadata {
+    pub permissions: u16,
+    pub header_crc_ok: bool,
+    pub format_magic: u32,
+}
+
 #[derive(Debug)]
 struct Node {
     symbol: u8,
@@ -58,6 +66,14 @@ struct Node {
     leaf: bool,
     left: Option<Box<Node>>,
     right: Option<Box<Node>>,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct DecodeNode {
+    symbol: u8,
+    leaf: bool,
+    left: u16,
+    right: u16,
 }
 
 impl Node {
@@ -322,9 +338,11 @@ pub fn encode_bytes(
     Ok(out)
 }
 
-fn load_tree(saved_tree: &[u8]) -> Result<Node, HuffmanError> {
-    // Reconstruct from post-order stream using a stack.
-    let mut stack: Vec<Node> = Vec::new();
+fn load_tree_compact(saved_tree: &[u8]) -> Result<(Vec<DecodeNode>, u16), HuffmanError> {
+    // Same post-order reconstruction as C, but materialize into a compact
+    // index-based representation to avoid pointer chasing in hot decode loops.
+    let mut stack: Vec<u16> = Vec::new();
+    let mut nodes: Vec<DecodeNode> = Vec::new();
     let mut i = 0usize;
     while i < saved_tree.len() {
         match saved_tree[i] {
@@ -332,7 +350,17 @@ fn load_tree(saved_tree: &[u8]) -> Result<Node, HuffmanError> {
                 if i + 1 >= saved_tree.len() {
                     return Err(HuffmanError::InvalidFormat("Incorrect tree"));
                 }
-                stack.push(Node::new_leaf(saved_tree[i + 1], 1));
+                if nodes.len() >= u16::MAX as usize {
+                    return Err(HuffmanError::InvalidFormat("Incorrect tree"));
+                }
+                let idx = nodes.len() as u16;
+                nodes.push(DecodeNode {
+                    symbol: saved_tree[i + 1],
+                    leaf: true,
+                    left: 0,
+                    right: 0,
+                });
+                stack.push(idx);
                 i += 2;
             }
             b'I' => {
@@ -342,7 +370,17 @@ fn load_tree(saved_tree: &[u8]) -> Result<Node, HuffmanError> {
                 let left = stack
                     .pop()
                     .ok_or(HuffmanError::InvalidFormat("Incorrect tree"))?;
-                stack.push(Node::join(left, right));
+                if nodes.len() >= u16::MAX as usize {
+                    return Err(HuffmanError::InvalidFormat("Incorrect tree"));
+                }
+                let idx = nodes.len() as u16;
+                nodes.push(DecodeNode {
+                    symbol: 0,
+                    leaf: false,
+                    left,
+                    right,
+                });
+                stack.push(idx);
                 i += 1;
             }
             _ => return Err(HuffmanError::InvalidFormat("Incorrect tree")),
@@ -352,35 +390,44 @@ fn load_tree(saved_tree: &[u8]) -> Result<Node, HuffmanError> {
     if stack.len() != 1 {
         return Err(HuffmanError::InvalidFormat("Incorrect tree"));
     }
-    Ok(stack.pop().expect("length checked"))
+    let root = stack.pop().expect("length checked");
+    Ok((nodes, root))
 }
 
-fn decode_payload(root: &Node, encoded: &[u8], len: u64) -> Result<Vec<u8>, HuffmanError> {
-    if root.leaf {
-        return Ok(vec![root.symbol; len as usize]);
+fn decode_payload_compact(
+    nodes: &[DecodeNode],
+    root: u16,
+    encoded: &[u8],
+    len: u64,
+) -> Result<Vec<u8>, HuffmanError> {
+    let root_node = nodes
+        .get(root as usize)
+        .ok_or(HuffmanError::InvalidFormat("Incorrect tree"))?;
+    if root_node.leaf {
+        return Ok(vec![root_node.symbol; len as usize]);
     }
 
     let mut out = Vec::with_capacity(len as usize);
-    let mut node = root;
+    let mut node_idx = root;
     for &byte in encoded {
-        for bit in 0..8 {
+        let mut bits = byte;
+        for _ in 0..8 {
             if out.len() == len as usize {
                 return Ok(out);
             }
 
-            let next = if ((byte >> bit) & 1) == 0 {
-                node.left
-                    .as_deref()
-                    .ok_or(HuffmanError::InvalidFormat("Incorrect tree"))?
-            } else {
-                node.right
-                    .as_deref()
-                    .ok_or(HuffmanError::InvalidFormat("Incorrect tree"))?
-            };
-            node = next;
-            if node.leaf {
-                out.push(node.symbol);
-                node = root;
+            let node = nodes
+                .get(node_idx as usize)
+                .ok_or(HuffmanError::InvalidFormat("Incorrect tree"))?;
+            node_idx = if (bits & 1) == 0 { node.left } else { node.right };
+            bits >>= 1;
+
+            let next = nodes
+                .get(node_idx as usize)
+                .ok_or(HuffmanError::InvalidFormat("Incorrect tree"))?;
+            if next.leaf {
+                out.push(next.symbol);
+                node_idx = root;
             }
         }
     }
@@ -391,8 +438,88 @@ fn decode_payload(root: &Node, encoded: &[u8], len: u64) -> Result<Vec<u8>, Huff
     Ok(out)
 }
 
-pub fn decode_bytes(input: &[u8]) -> Result<DecodeResult, HuffmanError> {
-    // Decode order follows the C implementation and format contract.
+fn decode_payload_stream<R: Read, W: Write>(
+    nodes: &[DecodeNode],
+    root: u16,
+    encoded_reader: &mut R,
+    len: u64,
+    out: &mut W,
+) -> Result<(), HuffmanError> {
+    const IN_CHUNK: usize = 64 * 1024;
+    const OUT_CHUNK: usize = 64 * 1024;
+
+    let root_node = nodes
+        .get(root as usize)
+        .ok_or(HuffmanError::InvalidFormat("Incorrect tree"))?;
+    if root_node.leaf {
+        // Degenerate tree: emit the single symbol in large chunks.
+        let mut remaining = len as usize;
+        let chunk = [root_node.symbol; OUT_CHUNK];
+        while remaining > 0 {
+            let n = remaining.min(OUT_CHUNK);
+            out.write_all(&chunk[..n])?;
+            remaining -= n;
+        }
+        return Ok(());
+    }
+
+    let mut in_buf = [0u8; IN_CHUNK];
+    let mut out_buf = [0u8; OUT_CHUNK];
+    let mut out_len = 0usize;
+    let mut produced = 0u64;
+    let mut node_idx = root;
+
+    while produced < len {
+        let nread = encoded_reader.read(&mut in_buf)?;
+        if nread == 0 {
+            break;
+        }
+
+        for &byte in &in_buf[..nread] {
+            let mut bits = byte;
+            for _ in 0..8 {
+                if produced == len {
+                    break;
+                }
+
+                let node = nodes
+                    .get(node_idx as usize)
+                    .ok_or(HuffmanError::InvalidFormat("Incorrect tree"))?;
+                node_idx = if (bits & 1) == 0 { node.left } else { node.right };
+                bits >>= 1;
+
+                let next = nodes
+                    .get(node_idx as usize)
+                    .ok_or(HuffmanError::InvalidFormat("Incorrect tree"))?;
+                if next.leaf {
+                    out_buf[out_len] = next.symbol;
+                    out_len += 1;
+                    produced += 1;
+                    node_idx = root;
+
+                    if out_len == out_buf.len() {
+                        out.write_all(&out_buf)?;
+                        out_len = 0;
+                    }
+                }
+            }
+
+            if produced == len {
+                break;
+            }
+        }
+    }
+
+    if produced != len {
+        return Err(HuffmanError::InvalidFormat("truncated payload"));
+    }
+    if out_len > 0 {
+        out.write_all(&out_buf[..out_len])?;
+    }
+    Ok(())
+}
+
+fn parse_header_and_tree(input: &[u8]) -> Result<(Header, usize, u16, bool), HuffmanError> {
     if input.len() < 16 {
         return Err(HuffmanError::InvalidFormat("Read of header failed"));
     }
@@ -433,16 +560,74 @@ pub fn decode_bytes(input: &[u8]) -> Result<DecodeResult, HuffmanError> {
     if input.len() < offset + tree_size {
         return Err(HuffmanError::InvalidFormat("Read of tree failed"));
     }
+
+    Ok((header, offset, permissions, header_crc_ok))
+}
+
+pub fn decode_bytes(input: &[u8]) -> Result<DecodeResult, HuffmanError> {
+    // Decode order follows the C implementation and format contract.
+    let (header, mut offset, permissions, header_crc_ok) = parse_header_and_tree(input)?;
+
+    let tree_size = header.tree_size as usize;
     let saved_tree = &input[offset..offset + tree_size];
     offset += tree_size;
 
-    let tree = load_tree(saved_tree)?;
-    let decoded = decode_payload(&tree, &input[offset..], header.file_size)?;
+    let (nodes, root) = load_tree_compact(saved_tree)?;
+    let decoded = decode_payload_compact(&nodes, root, &input[offset..], header.file_size)?;
     Ok(DecodeResult {
         data: decoded,
         permissions,
         header_crc_ok,
-        format_magic: magic,
+        format_magic: header.magic,
+    })
+}
+
+pub fn decode_stream<R: Read, W: Write>(
+    input: &mut R,
+    output: &mut W,
+) -> Result<DecodeMetadata, HuffmanError> {
+    // Stream-first decode used by the CLI:
+    // parse header/tree once, then decode directly into the writer without
+    // materializing full input/output buffers in memory.
+    let mut header_bytes = [0u8; 16];
+    input
+        .read_exact(&mut header_bytes)
+        .map_err(|_| HuffmanError::InvalidFormat("Read of header failed"))?;
+    let header = read_header_bytes(&header_bytes)?;
+    if header.magic != MAGIC_V1 && header.magic != MAGIC_V2 {
+        return Err(HuffmanError::InvalidFormat("Read of magic number failed"));
+    }
+
+    let mut permissions = header.permissions;
+    let mut header_crc_ok = true;
+    if header.magic == MAGIC_V2 {
+        let mut crc_bytes = [0u8; 2];
+        input
+            .read_exact(&mut crc_bytes)
+            .map_err(|_| HuffmanError::InvalidFormat("Read of header CRC failed"))?;
+        let stored_crc = u16::from_le_bytes(crc_bytes);
+        let computed_crc = crc16_ccitt(&header_bytes);
+        if stored_crc != computed_crc {
+            permissions = FALLBACK_PERMISSIONS;
+            header_crc_ok = false;
+        }
+    }
+
+    let tree_size = header.tree_size as usize;
+    if tree_size < MIN_TREE_BYTES || tree_size > MAX_TREE_BYTES || tree_size % 3 != 2 {
+        return Err(HuffmanError::InvalidFormat("Incorrect tree"));
+    }
+    let mut saved_tree = vec![0u8; tree_size];
+    input
+        .read_exact(&mut saved_tree)
+        .map_err(|_| HuffmanError::InvalidFormat("Read of tree failed"))?;
+
+    let (nodes, root) = load_tree_compact(&saved_tree)?;
+    decode_payload_stream(&nodes, root, input, header.file_size, output)?;
+    Ok(DecodeMetadata {
+        permissions,
+        header_crc_ok,
+        format_magic: header.magic,
     })
 }
 
