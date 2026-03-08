@@ -17,8 +17,8 @@ struct Args {
 }
 
 fn parse_args() -> Result<Args, String> {
-    // WHAT: map CLI flags to a small typed argument struct.
-    // HOW: strict single-pass parsing over argv; unknown/malformed flags are errors.
+    // Parse CLI flags into a typed argument struct.
+    // Unknown or malformed arguments fail fast with a clear usage error.
     let mut args = Args::default();
     let mut it = env::args().skip(1);
     while let Some(arg) = it.next() {
@@ -46,8 +46,8 @@ fn parse_args() -> Result<Args, String> {
 }
 
 fn read_all_input(path: Option<&PathBuf>) -> Result<Vec<u8>, io::Error> {
-    // WHAT: collect full plaintext input for encode_bytes().
-    // HOW: read from file when -i is provided, otherwise read stdin to EOF.
+    // Collect full plaintext input for encode_bytes():
+    // read from file when -i is present, otherwise read stdin to EOF.
     let mut data = Vec::new();
     match path {
         Some(p) => {
@@ -62,8 +62,8 @@ fn read_all_input(path: Option<&PathBuf>) -> Result<Vec<u8>, io::Error> {
 
 #[cfg(unix)]
 fn input_mode(path: Option<&PathBuf>) -> u16 {
-    // WHAT: preserve source permissions in the compressed header.
-    // HOW: copy mode bits from input metadata; fall back to 0644 when unavailable.
+    // Preserve source permission bits in the compressed header when possible.
+    // Fall back to 0644 if metadata cannot be read.
     if let Some(p) = path {
         if let Ok(meta) = p.metadata() {
             return meta.permissions().mode() as u16;
@@ -95,8 +95,8 @@ fn main() {
     };
 
     let mode = input_mode(args.input.as_ref());
-    // WHAT: perform canonical Huffman encoding with optional full-tree mode.
-    // HOW: encode_bytes builds header/tree/payload in the same byte layout as C.
+    // Encode with the same header/tree/payload layout as the C implementation.
+    // The optional full-tree mode forces all 256 symbols into the tree.
     let output = match encode_bytes(&input, mode, args.full_tree) {
         Ok(v) => v,
         Err(e) => {
@@ -107,8 +107,8 @@ fn main() {
 
     match args.output.as_ref() {
         Some(path) => {
-            // WHAT: avoid clobbering existing files.
-            // HOW: create_new(true) mirrors C's O_CREAT|O_EXCL behavior.
+            // Avoid clobbering existing files.
+            // create_new(true) mirrors C's O_CREAT|O_EXCL behavior.
             let mut f = match OpenOptions::new().create_new(true).write(true).open(path) {
                 Ok(v) => v,
                 Err(e) => {
@@ -122,8 +122,7 @@ fn main() {
             }
         }
         None => {
-            // WHAT: support pipeline usage.
-            // HOW: emit compressed bytes directly to stdout when -o is omitted.
+            // Pipeline mode: emit compressed bytes to stdout when -o is omitted.
             if let Err(e) = io::stdout().write_all(&output) {
                 eprintln!("encode: write stdout failed: {e}");
                 std::process::exit(1);

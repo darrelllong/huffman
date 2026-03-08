@@ -170,9 +170,9 @@ def mutate_blob(data: bytes, rng: random.Random, max_len: int) -> bytes:
 
 
 def mutate_structured_header(data: bytes, rng: random.Random, max_len: int) -> bytes:
-    # WHAT: deterministically perturb header fields with semantic meaning.
-    # HOW: patch magic/tree_size/file_size/CRC bytes to boundary and sentinel values.
-    # This reaches parser branches that uniform random bit flips rarely hit.
+    # Deterministically perturb semantic header fields.
+    # Boundary and sentinel edits on magic/tree_size/file_size/CRC hit parser
+    # branches that uniform random bit flips rarely reach.
     b = bytearray(data if data else (MAGIC_V2.to_bytes(4, "little") + b"\x00" * 14))
     if len(b) < 18:
         b.extend(rng.randbytes(18 - len(b)))
@@ -261,9 +261,8 @@ def make_v1_stream(v2_stream: bytes) -> Optional[bytes]:
 def seed_valid_corpus(
     corpus: list[bytes], rng: random.Random, encode_bin: str, timeout: float, corpus_limit: int
 ) -> None:
-    # WHAT: bootstrap mutation mode with valid compressed samples.
-    # HOW: generate small encoded streams (including V1 form) before the main loop.
-    # This avoids spending early mutation iterations on pure garbage inputs only.
+    # Bootstrap mutation mode with valid compressed samples (including V1 form).
+    # This avoids wasting early mutation iterations on junk-only inputs.
     seed_payloads = [
         b"",
         b"A",
@@ -300,9 +299,9 @@ def roundtrip_case(
     full_tree_ratio: float,
     pipe_ratio: float,
 ) -> tuple[bool, str, bytes, bytes, bytes, int, int, bytes, bytes, bool]:
-    # WHAT: verify encode/decode correctness end-to-end.
-    # HOW: run either file-path mode or stdin/stdout pipeline mode, then compare payload bytes.
-    # Both modes check return codes and sanitizer diagnostics on encode and decode stderr.
+    # End-to-end encode/decode correctness check.
+    # Runs in file mode or stdin/stdout pipeline mode and compares payload bytes.
+    # Both paths check return codes and sanitizer diagnostics on stderr.
     payload = random_bytes(rng, max_plain)
     use_full_tree = rng.random() < full_tree_ratio
     use_pipe = rng.random() < pipe_ratio
@@ -404,8 +403,8 @@ def decode_mutation_case(
     max_mutated: int,
     structured_ratio: float,
 ) -> tuple[bool, str, bytes, bytes, int, bytes, bool]:
-    # WHAT: stress decoder robustness on malformed or near-valid compressed blobs.
-    # HOW: select a base from corpus, mutate it (random or structured), and run decode.
+    # Stress decoder robustness with malformed or near-valid compressed blobs.
+    # Select a base from corpus, mutate it (random or structured), and run decode.
     # Non-zero exits are allowed; sanitizer output, signals, and timeouts are not.
     base = rng.choice(corpus) if corpus and rng.random() < 0.9 else rng.randbytes(rng.randint(0, 8192))
     if rng.random() < structured_ratio:
@@ -470,9 +469,8 @@ def main() -> int:
     print(f"[fuzz] encode={Path(encode_bin).resolve()}")
     print(f"[fuzz] decode={Path(decode_bin).resolve()}")
 
-    # WHAT: mixed corpus gives broad coverage quickly.
-    # HOW: start with tiny junk seeds, then inject valid compressed artifacts at startup and
-    # continuously from successful round-trip iterations.
+    # Mixed corpus gives broad coverage quickly: start with tiny junk seeds and
+    # continuously inject valid compressed artifacts from startup and round-trips.
     corpus: list[bytes] = [b"", b"\x00", b"\xff", b"L", b"I", b"L\x00I"]
     failures = 0
     seed_valid_corpus(corpus, rng, encode_bin, args.timeout, args.corpus_limit)
