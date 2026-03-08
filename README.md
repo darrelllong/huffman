@@ -60,8 +60,9 @@ emit `MAGIC_V2` with the same CRC16 placement and preserve this byte layout.
 
 The following timing snapshot comes from:
 
+* `pilot-bench`: <https://github.com/ascar-io/pilot-bench>
 * `python3 tests/run_pilot_comparison.py --preset quick --session-limit 600 --out-dir workloads/pilot_runs`
-* helper scripts: `tests/pilot_run_local.sh` and `tests/pilot_run_wigner.sh`
+* helper scripts: `tests/pilot_run_local.sh` (default local path), `tests/pilot_run_remote.sh` (generic remote runner; set `REMOTE_HOST`)
 * source data: `workloads/pilot_runs/comparison_summary.csv`
 * kernel workload source: `workloads/kernel/README.md`
 
@@ -75,6 +76,21 @@ Values are in **seconds**, reported as **mean ± 95% CI**, with **repetitions (`
 | Kipling | decode | `0.0202921 ± 0.000504419` | `42` | `0.0195754 ± 0.000260255` | `30` | `1.04x` |
 | Linux kernel 6.19.6 tarball | encode | `1.4250300 ± 0.006152180` | `60` | `0.8113920 ± 0.003594940` | `30` | `1.76x` |
 | Linux kernel 6.19.6 tarball | decode | `1.2364500 ± 0.006382270` | `30` | `0.7987680 ± 0.002316010` | `90` | `1.55x` |
+
+### Benchmark citation (BibTeX) ###
+
+Stored in [`REFERENCES.bib`](./REFERENCES.bib):
+
+```bibtex
+@inproceedings{li2016pilot,
+  author    = {Yan Li},
+  title     = {Pilot: A Framework that Understands How to Do Performance Benchmarks The Right Way},
+  booktitle = {2016 IEEE 24th International Symposium on Modeling, Analysis and Simulation of Computer and Telecommunication Systems (MASCOTS)},
+  year      = {2016},
+  month     = sep,
+  address   = {London, UK}
+}
+```
 
 ### Contribution guidelines ###
 
