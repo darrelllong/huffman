@@ -1,3 +1,8 @@
+//! CLI front-end for Huffman decoding.
+//!
+//! This wrapper is intentionally thin: it handles argument parsing and I/O
+//! policy, then delegates format logic to `huffman_rs::decode_stream`.
+
 use std::env;
 use std::fs::File;
 use std::fs::OpenOptions;
@@ -77,8 +82,9 @@ fn main() {
                 None => Box::new(io::stdin().lock()),
             };
 
-            // Stream decode to avoid whole-file buffering.
-            // decode_stream parses header/tree once and writes output incrementally.
+            // Read header/tree and decode directly into the output file.
+            // decode_stream avoids whole-file buffering by streaming output
+            // incrementally as each symbol is decoded.
             let decoded = match decode_stream(&mut input, &mut f) {
                 Ok(v) => v,
                 Err(e) => {
@@ -105,7 +111,8 @@ fn main() {
             }
         }
         None => {
-            // Pure pipeline mode (stdin -> decode -> stdout) using locked streams.
+            // Pipeline mode: stdin -> decode -> stdout using locked streams
+            // to avoid per-byte locking overhead.
             let mut stdin = io::stdin().lock();
             let mut stdout = io::stdout().lock();
             let decoded = match decode_stream(&mut stdin, &mut stdout) {

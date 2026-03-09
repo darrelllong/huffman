@@ -140,6 +140,10 @@ impl Code {
 }
 
 // Queue discipline follows the C code: insertion sort by frequency.
+// Insertion sort is preferable to a more sophisticated structure here:
+// the queue never exceeds 257 entries (256 symbol leaves + one working
+// slot), so the average case is fewer than 500 comparisons and the
+// worst case is 32,896 — well within acceptable bounds.
 // Ties preserve arrival order (stable for equal counts).
 fn enqueue_sorted(queue: &mut VecDeque<Node>, node: Node) {
     let slot = queue
@@ -161,8 +165,10 @@ fn build_tree(input: &[u8], full_tree: bool) -> Result<(Node, u16), HuffmanError
         hist[idx] += 1;
     }
 
-    // Require at least two symbols, exactly like the C implementation.
-    // This prevents degenerate one-node trees in normal mode.
+    // The tree must have at least two symbols to produce valid prefix codes.
+    // A single-symbol tree would be degenerate; rather than special-casing
+    // every downstream path we pad with 0x00 and 0xFF as stand-ins, matching
+    // the C implementation's approach.
     if unique < 2 {
         if hist[0] == 0 {
             hist[0] += 1;
@@ -182,7 +188,11 @@ fn build_tree(input: &[u8], full_tree: bool) -> Result<(Node, u16), HuffmanError
         }
     }
 
-    // Serialized size is fixed by leaf count in this post-order encoding.
+    // Serialized tree size in bytes:
+    //   1. Two bytes per leaf ('L' + symbol byte)
+    //   2. One byte per internal node ('I')
+    //   3. A tree with n leaves has exactly n-1 internal nodes
+    //   Therefore: 2*n + (n-1) = 3*n - 1 bytes total.
     let tree_size = if leaves > 0 { 3 * leaves - 1 } else { 0 };
     let mut root: Option<Node> = None;
     while let Some(left) = queue.pop_front() {
@@ -413,6 +423,8 @@ fn load_tree_compact(saved_tree: &[u8]) -> Result<(Vec<DecodeNode>, u16), Huffma
         }
     }
 
+    // A valid post-order tree stream leaves exactly one node on the stack:
+    // the root.  More or fewer means the byte stream was malformed.
     if stack.len() != 1 {
         return Err(HuffmanError::InvalidFormat("Incorrect tree"));
     }
@@ -443,12 +455,15 @@ fn decode_payload_compact(
                 return Ok(out);
             }
 
+            // Walk left on 0, right on 1.  This is safe because the root
+            // is always an internal node when the tree has multiple symbols.
             let node = nodes
                 .get(node_idx as usize)
                 .ok_or(HuffmanError::InvalidFormat("Incorrect tree"))?;
             node_idx = if (bits & 1) == 0 { node.left } else { node.right };
             bits >>= 1;
 
+            // Emit symbol when a leaf is reached, then reset to the root.
             let next = nodes
                 .get(node_idx as usize)
                 .ok_or(HuffmanError::InvalidFormat("Incorrect tree"))?;
@@ -509,12 +524,15 @@ fn decode_payload_stream<R: Read, W: Write>(
                     break;
                 }
 
+                // Walk left on 0, right on 1.  This is safe because the root
+                // is always an internal node when the tree has multiple symbols.
                 let node = nodes
                     .get(node_idx as usize)
                     .ok_or(HuffmanError::InvalidFormat("Incorrect tree"))?;
                 node_idx = if (bits & 1) == 0 { node.left } else { node.right };
                 bits >>= 1;
 
+                // Emit symbol when a leaf is reached, then reset to the root.
                 let next = nodes
                     .get(node_idx as usize)
                     .ok_or(HuffmanError::InvalidFormat("Incorrect tree"))?;
