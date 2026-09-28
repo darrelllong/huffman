@@ -60,22 +60,48 @@ emit `MAGIC_V2` with the same CRC16 placement and preserve this byte layout.
 
 The following timing snapshot comes from:
 
-* `pilot-bench`: <https://github.com/ascar-io/pilot-bench>
-* `python3 tests/run_pilot_comparison.py --preset quick --session-limit 600 --out-dir workloads/pilot_runs`
-* helper scripts: `tests/pilot_run_local.sh` (default local path), `tests/pilot_run_remote.sh` (generic remote runner; set `REMOTE_HOST`)
+* `pilot-bench`: <https://github.com/darrelllong/pilot-bench>, commit `f01eec4`
+* `python3 tests/run_pilot_comparison.py --preset quick --session-limit 600 --cpu 9 --out-dir workloads/pilot_runs`
+* helper scripts: `tests/pilot_run_local.sh` (default local path; set `CPU` to pin), `tests/pilot_run_remote.sh` (generic remote runner; set `REMOTE_HOST`)
 * source data: `workloads/pilot_runs/comparison_summary.csv`
 * kernel workload source: `workloads/kernel/README.md`
 
-Values are in **seconds**, reported as **mean ± 95% CI**, with **repetitions (`n`)** per case.
+Machine and method: knuth, NVIDIA GB10, Ubuntu 24.04.5 LTS (Linux
+7.0.0-1019-nvidia, aarch64), `performance` governor. Pilot, the Python
+case runner and the program under test were pinned together to logical
+CPU 9, a Cortex-X925 core at up to 3.9 GHz. C built with GCC 13.3.0 and
+the `Makefile` flags (`-O3 -DNDEBUG -std=c17`); Rust 1.95.0,
+`cargo build --release`; Python 3.12.3. Run on September 28, 2026,
+20:31–20:39 UTC, with no other benchmark or build running.
+
+Each reading is the wall-clock time, measured by `tests/run_huffman_case.py`
+with `time.perf_counter()`, of one invocation of `encode` or `decode`: process
+start, reading the input file, coding, and writing the output to a
+temporary file. Pilot's `quick` preset requires at least 30 subsession
+samples, a 95% confidence interval no wider than 20% of the mean, and
+autocorrelation within ±0.8. Every session converged (Pilot exit status 0).
+
+Values are in **seconds**, reported as **mean ± half-width of the 95% CI**,
+with **repetitions (`n`)**, the number of readings Pilot took. Rust speedup
+is C mean divided by Rust mean.
 
 | Workload | Operation | C (s, mean ± 95% CI) | C n | Rust (s, mean ± 95% CI) | Rust n | Rust speedup |
 | --- | --- | --- | --- | --- | --- | --- |
-| Shakespeare | encode | `0.0616302 ± 0.000793960` | `30` | `0.0459261 ± 0.000268996` | `60` | `1.34x` |
-| Shakespeare | decode | `0.0744287 ± 0.001117060` | `30` | `0.0692755 ± 0.001561260` | `33` | `1.07x` |
-| Kipling | encode | `0.0167349 ± 0.000276520` | `90` | `0.0138308 ± 0.000167485` | `41` | `1.21x` |
-| Kipling | decode | `0.0202921 ± 0.000504419` | `42` | `0.0195754 ± 0.000260255` | `30` | `1.04x` |
-| Linux kernel 6.19.6 tarball | encode | `1.4250300 ± 0.006152180` | `60` | `0.8113920 ± 0.003594940` | `30` | `1.76x` |
-| Linux kernel 6.19.6 tarball | decode | `1.2364500 ± 0.006382270` | `30` | `0.7987680 ± 0.002316010` | `90` | `1.55x` |
+| Shakespeare | encode | `0.0541423 ± 0.0000326` | `53` | `0.0418088 ± 0.0000588` | `64` | `1.29x` |
+| Shakespeare | decode | `0.0800062 ± 0.0000364` | `33` | `0.0652912 ± 0.0005237` | `41` | `1.23x` |
+| Kipling | encode | `0.0134534 ± 0.0000124` | `30` | `0.0105970 ± 0.0000139` | `30` | `1.27x` |
+| Kipling | decode | `0.0193806 ± 0.0002270` | `84` | `0.0164183 ± 0.0000130` | `30` | `1.18x` |
+| Linux kernel 6.19.6 tarball | encode | `1.7691900 ± 0.0008656` | `90` | `1.0768500 ± 0.0005634` | `30` | `1.64x` |
+| Linux kernel 6.19.6 tarball | decode | `2.1125400 ± 0.0017334` | `30` | `1.1954300 ± 0.0003694` | `124` | `1.77x` |
+
+The previous snapshot (March 2026, machine not recorded, Pilot before
+`f01eec4`) reported the full width of the confidence interval after the ±;
+the summary CSV now records both the full width and the half-width. Its
+speedups were 1.34x, 1.07x, 1.21x, 1.04x, 1.76x and 1.55x in the order of
+the rows above: Rust was faster in every case then as now, and the decode
+speedups are larger on knuth. Because the machine, the compiler and Pilot
+all changed, the comparison does not attribute the difference to any one
+of them.
 
 ### Benchmark citation (BibTeX) ###
 

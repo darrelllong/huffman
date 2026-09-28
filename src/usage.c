@@ -8,9 +8,11 @@ void printUsage(void) {
   if (getrusage(RUSAGE_SELF, &r) < 0) {
     exit(EXIT_FAILURE);
   }
-  fprintf(stderr, "%lds %d𝜇s (%s)\n", r.ru_utime.tv_sec, r.ru_utime.tv_usec,
+  fprintf(stderr, "%lds %ld𝜇s (%s)\n", (long)r.ru_utime.tv_sec,
+          (long)r.ru_utime.tv_usec,
          "user CPU time used");
-  fprintf(stderr, "%lds %d𝜇s (%s)\n", r.ru_stime.tv_sec, r.ru_stime.tv_usec,
+  fprintf(stderr, "%lds %ld𝜇s (%s)\n", (long)r.ru_stime.tv_sec,
+          (long)r.ru_stime.tv_usec,
          "system CPU time used");
   fprintf(stderr, "%ld (%s)\n", r.ru_maxrss, "maximum resident set size");
   fprintf(stderr, "%ld (%s)\n", r.ru_ixrss, "integral shared memory size");

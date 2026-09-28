@@ -27,6 +27,18 @@ def parse_args() -> argparse.Namespace:
     )
     p.add_argument("--preset", default="quick", choices=("quick", "normal", "strict"))
     p.add_argument("--session-limit", type=int, default=120, help="Seconds per case")
+    p.add_argument(
+        "--cpu",
+        type=int,
+        default=None,
+        help="Pin Pilot and the workload to this logical CPU with taskset",
+    )
+    p.add_argument(
+        "--confidence-level",
+        type=float,
+        default=0.95,
+        help="Confidence level passed to Pilot",
+    )
     return p.parse_args()
 
 
@@ -112,11 +124,14 @@ def main() -> int:
     for case_name, exe, mode, inp in cases:
         case_dir = out_dir / case_name
         case_dir.mkdir(parents=True, exist_ok=True)
-        cmd = [
+        cmd = [] if args.cpu is None else ["taskset", "-c", str(args.cpu)]
+        cmd += [
             str(bench),
             "run_program",
             "--preset",
             args.preset,
+            "--confidence-level",
+            str(args.confidence_level),
             "--session-limit",
             str(args.session_limit),
             "-q",
@@ -141,6 +156,8 @@ def main() -> int:
             return proc.returncode
         mean, ci, n = read_pi_results(case_dir / "pi_results.csv")
         ci_level = read_ci_level_percent(case_dir / "session_log.txt")
+        if ci_level is None:
+            ci_level = round(100 * args.confidence_level)
         try:
             impl, operation, workload = case_name.split("_", 2)
         except ValueError:
@@ -157,13 +174,15 @@ def main() -> int:
             "operation",
             "workload",
             "mean_seconds",
-            "ci95_seconds",
+            "ci_full_width_seconds",
+            "ci_half_width_seconds",
             "ci_level_percent",
             "repetitions",
         ])
-        writer.writerows(results)
+        for row in results:
+            writer.writerow([*row[:6], row[5] / 2, *row[6:]])
 
-    print("\ncase,impl,operation,workload,mean_seconds,ci95_seconds,ci_level_percent,repetitions")
+    print("\ncase,impl,operation,workload,mean_seconds,ci_full_width_seconds,ci_level_percent,repetitions")
     for row in results:
         ci_level_str = "" if row[6] is None else str(row[6])
         print(",".join([

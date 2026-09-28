@@ -1,3 +1,6 @@
+// fchmod is POSIX; glibc hides it under -std=c17 without a feature macro.
+#define _POSIX_C_SOURCE 200809L
+
 #include "code.h"
 #include "crc16.h"
 #include "endian.h"
