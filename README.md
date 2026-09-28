@@ -79,23 +79,23 @@ with `time.perf_counter()`, of one invocation of `encode` or `decode`: process
 start, reading the input file, coding, and writing the output to a
 temporary file. Pilot's `quick` preset requires at least 30 subsession
 samples, a 95% confidence interval no wider than 20% of the mean, and
-autocorrelation within ±0.8. Every session converged (Pilot exit status 0).
+autocorrelation within $\pm 0.8$. Every session converged (Pilot exit status 0).
 
-Values are in **seconds**, reported as **mean ± half-width of the 95% CI**,
+Values are in **seconds**, reported as **mean $\pm$ half-width of the 95% CI**,
 with **repetitions (`n`)**, the number of readings Pilot took. Rust speedup
 is C mean divided by Rust mean.
 
-| Workload | Operation | C (s, mean ± 95% CI) | C n | Rust (s, mean ± 95% CI) | Rust n | Rust speedup |
+| Workload | Operation | C (s, mean $\pm$ 95% CI) | C n | Rust (s, mean $\pm$ 95% CI) | Rust n | Rust speedup |
 | --- | --- | --- | --- | --- | --- | --- |
-| Shakespeare | encode | `0.0541423 ± 0.0000326` | `53` | `0.0418088 ± 0.0000588` | `64` | `1.29x` |
-| Shakespeare | decode | `0.0800062 ± 0.0000364` | `33` | `0.0652912 ± 0.0005237` | `41` | `1.23x` |
-| Kipling | encode | `0.0134534 ± 0.0000124` | `30` | `0.0105970 ± 0.0000139` | `30` | `1.27x` |
-| Kipling | decode | `0.0193806 ± 0.0002270` | `84` | `0.0164183 ± 0.0000130` | `30` | `1.18x` |
-| Linux kernel 6.19.6 tarball | encode | `1.7691900 ± 0.0008656` | `90` | `1.0768500 ± 0.0005634` | `30` | `1.64x` |
-| Linux kernel 6.19.6 tarball | decode | `2.1125400 ± 0.0017334` | `30` | `1.1954300 ± 0.0003694` | `124` | `1.77x` |
+| Shakespeare | encode | $0.0541423 \pm 0.0000326$ | `53` | $0.0418088 \pm 0.0000588$ | `64` | `1.29x` |
+| Shakespeare | decode | $0.0800062 \pm 0.0000364$ | `33` | $0.0652912 \pm 0.0005237$ | `41` | `1.23x` |
+| Kipling | encode | $0.0134534 \pm 0.0000124$ | `30` | $0.0105970 \pm 0.0000139$ | `30` | `1.27x` |
+| Kipling | decode | $0.0193806 \pm 0.0002270$ | `84` | $0.0164183 \pm 0.0000130$ | `30` | `1.18x` |
+| Linux kernel 6.19.6 tarball | encode | $1.7691900 \pm 0.0008656$ | `90` | $1.0768500 \pm 0.0005634$ | `30` | `1.64x` |
+| Linux kernel 6.19.6 tarball | decode | $2.1125400 \pm 0.0017334$ | `30` | $1.1954300 \pm 0.0003694$ | `124` | `1.77x` |
 
 The previous snapshot (March 2026, machine not recorded, Pilot before
-`f01eec4`) reported the full width of the confidence interval after the ±;
+`f01eec4`) reported the full width of the confidence interval after the $\pm$;
 the summary CSV now records both the full width and the half-width. Its
 speedups were 1.34x, 1.07x, 1.21x, 1.04x, 1.76x and 1.55x in the order of
 the rows above: Rust was faster in every case then as now, and the decode
